@@ -35,19 +35,30 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 
-private const val HOST = "100.66.191.51"
-private const val PORT = 22
-private const val USERNAME = "agent-stack"
-private const val ASSET_KEY_NAME = "phase0_id_ed25519"
-private const val SESSION_NAME = "phase0-test"
-
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val store = ConnectionStore(applicationContext)
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    SpikeScreen(appContext = applicationContext)
+                    var connection by remember { mutableStateOf(store.load()) }
+                    val current = connection
+                    if (current == null) {
+                        ConnectScreen(onConnect = { c ->
+                            store.save(c)
+                            connection = c
+                        })
+                    } else {
+                        SpikeScreen(
+                            appContext = applicationContext,
+                            connection = current,
+                            onForget = {
+                                store.clear()
+                                connection = null
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -55,7 +66,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun SpikeScreen(appContext: Context) {
+fun SpikeScreen(appContext: Context, connection: Connection, onForget: () -> Unit) {
     var paneId by remember { mutableStateOf<String?>(null) }
     var connected by remember { mutableStateOf(false) }
     var viewMode by remember { mutableStateOf("terminal") } // terminal | chat-claude | chat-hermes
@@ -77,7 +88,15 @@ fun SpikeScreen(appContext: Context) {
     var claudeStarted by remember { mutableStateOf(false) }
     var hermesStarted by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    val session = remember { SshSpikeSession(appContext, HOST, PORT, USERNAME, ASSET_KEY_NAME) }
+    val session = remember {
+        SshSpikeSession(
+            appContext,
+            connection.hostname,
+            connection.port,
+            connection.username,
+            password = connection.password,
+        )
+    }
 
     // Terminal pane output. A SharedFlow (not state) because TerminalHost consumes it
     // as a stream and appends to the emulator; extraBufferCapacity keeps the collector
@@ -86,7 +105,7 @@ fun SpikeScreen(appContext: Context) {
 
     LaunchedEffect(Unit) {
         runCatching {
-            session.connect(SESSION_NAME)
+            session.connect(connection.sessionName)
             connected = true
             // The connect()-time capture-pane request replies as a %begin/<data>/%end
             // block interleaved with ordinary %output notifications on this same
@@ -181,7 +200,7 @@ fun SpikeScreen(appContext: Context) {
         RawInputBridge(
             scope,
             session,
-            target = { paneId ?: SESSION_NAME },
+            target = { paneId ?: connection.sessionName },
             enabled = { inputMode == "raw" },
         )
     }
@@ -212,6 +231,7 @@ fun SpikeScreen(appContext: Context) {
             Button(onClick = { viewMode = "terminal" }) { Text("Terminal") }
             Button(onClick = { viewMode = "chat-claude" }) { Text("Chat: Claude") }
             Button(onClick = { viewMode = "chat-hermes" }) { Text("Chat: Hermes") }
+            Button(onClick = onForget) { Text("Forget") }
         }
         if (viewMode == "terminal") {
             Row {
@@ -232,7 +252,7 @@ fun SpikeScreen(appContext: Context) {
             if (inputMode == "compose") {
                 ComposeInputBar(onSend = { text ->
                     scope.launch {
-                        runCatching { session.sendKeys(paneId ?: SESSION_NAME, text, literal = true) }
+                        runCatching { session.sendKeys(paneId ?: connection.sessionName, text, literal = true) }
                             .onFailure { e ->
                                 terminalFeed.emit("\r\nSEND ERROR: ${e.message}\r\n")
                             }
@@ -247,7 +267,7 @@ fun SpikeScreen(appContext: Context) {
                 // onSend had already returned). Verified: `send-keys -t phase0-test -l`
                 // + Enter works on an idle session with no prior %output.
                 scope.launch {
-                    runCatching { session.sendKeys(SESSION_NAME, text) }
+                    runCatching { session.sendKeys(connection.sessionName, text) }
                         .onFailure { e ->
                             // Into the active source's list: `chatEvents` is now a derived
                             // read-only view and cannot be appended to.
