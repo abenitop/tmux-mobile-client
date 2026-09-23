@@ -6,8 +6,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -100,7 +103,17 @@ fun SpikeScreen(appContext: Context) {
         onDispose { session.close() }
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            // targetSdk 36 forces edge-to-edge on Android 15+, so without this the
+            // mode-toggle row is drawn *under* the system status bar and its touches are
+            // consumed by SystemUI -- "Chat: Hermes" was literally untappable (the status
+            // bar's insets frame is the full width and 113px tall, and the row sat inside
+            // it). safeDrawing keeps content clear of the status bar and nav bar.
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .padding(16.dp)
+    ) {
         Row {
             Button(onClick = { viewMode = "terminal" }) { Text("Terminal") }
             Button(onClick = { viewMode = "chat-claude" }) { Text("Chat: Claude") }
@@ -125,9 +138,13 @@ fun SpikeScreen(appContext: Context) {
             }
         } else {
             ChatScreen(events = chatEvents, onSend = { text ->
-                val target = paneId ?: return@ChatScreen
+                // Target the SESSION, not paneId. paneId is only ever learned from a
+                // %output line, and an idle session emits none -- so gating send on
+                // paneId made Chat's Send silently do nothing (the draft cleared, but
+                // onSend had already returned). Verified: `send-keys -t phase0-test -l`
+                // + Enter works on an idle session with no prior %output.
                 scope.launch {
-                    runCatching { session.sendKeys(target, text) }
+                    runCatching { session.sendKeys(SESSION_NAME, text) }
                         .onFailure { e -> chatEvents.add(ChatEvent.AssistantMessage("SEND ERROR: ${e.message}")) }
                 }
             })

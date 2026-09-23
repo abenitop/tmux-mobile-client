@@ -1,0 +1,43 @@
+#!/bin/bash
+# phase0-chat-dispatcher -- forced command for the phase0-spike-only SSH key.
+#
+# Why: OpenSSH applies the forced command to EVERY session channel on a key, so the
+# Phase 0 `command="tmux -CC attach ..."` made the Chat view adapters impossible --
+# their `tail -F` / `sqlite3` channels were silently turned into tmux control mode.
+# This dispatcher instead inspects $SSH_ORIGINAL_COMMAND and runs ONLY the handful of
+# read-only commands the app actually uses.
+#
+# Matching is by base64 byte-exact comparison, so a lookalike command (e.g. the same
+# tail with a different file, or extra shell metacharacters) will NOT match.
+#
+# Channel 0 (no command) is the control-mode attach and needs the client's PTY.
+set -u
+
+LOG_TAG="phase0-dispatcher"
+TMUX_ATTACH=(tmux -CC attach -t phase0-test)
+log() { logger -t "$LOG_TAG" "$1" 2>/dev/null || true; }
+
+CMD="${SSH_ORIGINAL_COMMAND:-}"
+
+if [ -z "$CMD" ]; then
+  log "allow control-mode-attach (no original command)"
+  exec "${TMUX_ATTACH[@]}"
+fi
+
+try_allow() {
+  local expect
+  expect=$(printf '%s' "$1" | base64 -d 2>/dev/null) || return 1
+  if [ "$CMD" = "$expect" ]; then
+    log "allow $2"
+    exec bash -c "$CMD"
+  fi
+  return 1
+}
+
+try_allow "dG11eCAtQ0MgYXR0YWNoIC10IHBoYXNlMC10ZXN0" "control-mode-attach (explicit)"
+try_allow "dGFpbCAtbiArMSAtRiAiJChscyAtdCAvaG9tZS9hZ2VudC1zdGFjay8uY2xhdWRlL3Byb2plY3RzLy1ob21lLWFnZW50LXN0YWNrLyouanNvbmwgfCBoZWFkIC0xKSI=" "claude-transcript-tail"
+try_allow "c2lkPSQoc3FsaXRlMyAvaG9tZS9hZ2VudC1zdGFjay8uaGVybWVzL3N0YXRlLmRiICJTRUxFQ1QgaWQgRlJPTSBzZXNzaW9ucyBPUkRFUiBCWSAoZW5kZWRfYXQgSVMgTlVMTCkgREVTQywgc3RhcnRlZF9hdCBERVNDIExJTUlUIDE7IikKb2Zmc2V0PTAKd2hpbGUgdHJ1ZTsgZG8KICByb3dzPSQoc3FsaXRlMyAvaG9tZS9hZ2VudC1zdGFjay8uaGVybWVzL3N0YXRlLmRiICJTRUxFQ1QganNvbl9vYmplY3QoJ2lkJyxpZCwncm9sZScscm9sZSwnY29udGVudCcsY29udGVudCwndG9vbF9jYWxscycsdG9vbF9jYWxscywndG9vbF9uYW1lJyx0b29sX25hbWUpIEZST00gbWVzc2FnZXMgV0hFUkUgc2Vzc2lvbl9pZD0nJHtzaWR9JyBBTkQgaWQgPiAke29mZnNldH0gT1JERVIgQlkgaWQ7IikKICBpZiBbIC1uICIke3Jvd3N9IiBdOyB0aGVuCiAgICBwcmludGYgJyVzXG4nICIke3Jvd3N9IgogICAgb2Zmc2V0PSQocHJpbnRmICclc1xuJyAiJHtyb3dzfSIgfCB0YWlsIC0xIHwgcHl0aG9uMyAtYyAiaW1wb3J0IGpzb24sc3lzOyBwcmludChqc29uLmxvYWQoc3lzLnN0ZGluKVsnaWQnXSkiKQogIGZpCiAgc2xlZXAgMS41CmRvbmU=" "hermes-state-db-poll-loop"
+
+log "DENY $(printf '%s' "$CMD" | head -c 200)"
+echo "phase0-dispatcher: command not permitted" >&2
+exit 1

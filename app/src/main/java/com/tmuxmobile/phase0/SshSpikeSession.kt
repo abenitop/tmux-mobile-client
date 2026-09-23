@@ -104,7 +104,14 @@ class SshSpikeSession(
 
     suspend fun sendKeys(paneId: String, text: String) = withContext(Dispatchers.IO) {
         val escaped = text.replace("\\", "\\\\").replace("\"", "\\\"")
+        // Each control-mode command MUST be flushed on its own. If both commands
+        // arrive in one write, tmux executes only the first and discards the rest,
+        // so "send-keys Enter" was silently dropped and the text was typed but never
+        // submitted. Verified against tmux 3.4 over a live control-mode channel:
+        // single-flush => only the literal text lands in the pane; one flush per
+        // command => the line is typed and submitted.
         stdin.write("send-keys -t $paneId -l \"$escaped\"\n".toByteArray())
+        stdin.flush()
         stdin.write("send-keys -t $paneId Enter\n".toByteArray())
         stdin.flush()
     }
