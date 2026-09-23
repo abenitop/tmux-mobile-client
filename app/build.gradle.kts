@@ -39,4 +39,8 @@ dependencies {
     implementation("org.bouncycastle:bcprov-jdk18on:1.84")
 
     testImplementation("junit:junit:4.13.2")
+    // The Android SDK's org.json is a *stub* on the JVM unit-test classpath (methods
+    // throw "not mocked"), so the mappers can't be tested without a real
+    // implementation. Test-scope only: the app keeps using the SDK's bundled org.json.
+    testImplementation("org.json:json:20250517")
 }
