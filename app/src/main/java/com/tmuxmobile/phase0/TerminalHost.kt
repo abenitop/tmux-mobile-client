@@ -37,6 +37,7 @@ fun TerminalHost(
     feed: Flow<String>,
     viewClient: TerminalViewClient,
     onFling: (SwipeDirection) -> Unit = {},
+    focusable: Boolean = true,
 ) {
     var session by remember { mutableStateOf<TerminalSession?>(null) }
     var view by remember { mutableStateOf<TerminalView?>(null) }
@@ -57,8 +58,9 @@ fun TerminalHost(
                 // default-color text is nearly invisible against the app's window --
                 // must set this explicitly (Task 1 finding).
                 setBackgroundColor(0xFF000000.toInt())
-                // Hardware/injected key events never arrive without this; the
-                // soft-keyboard/IME path is unaffected either way (Task 1 finding).
+                // Hardware/injected key events never arrive without focus. When the
+                // compose bar owns input, focus is handed to its text field instead --
+                // see the focus block below.
                 isFocusable = true
                 isFocusableInTouchMode = true
                 // Swipe/fling is NOT part of TerminalViewClient (Task 1 verified), so it
@@ -120,6 +122,21 @@ fun TerminalHost(
         // paneId) would never reach the TerminalView.
         update = { terminalView -> terminalView.setTerminalViewClient(viewClient) },
     )
+
+    // Hand focus to (or take it from) the terminal as input ownership changes. Without
+    // the release path, compose mode opens with focus still on the terminal -- which
+    // never shows the soft keyboard, so the user taps the text field, the IME covers the
+    // terminal, and the terminal's own text-selection path never gets a long-press.
+    DisposableEffect(focusable, view) {
+        val v = view ?: return@DisposableEffect onDispose {}
+        if (focusable) {
+            v.requestFocus()
+            onDispose {}
+        } else {
+            v.clearFocus()
+            onDispose {}
+        }
+    }
 
     LaunchedEffect(session) {
         val activeSession = session ?: return@LaunchedEffect

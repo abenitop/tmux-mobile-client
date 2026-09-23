@@ -42,7 +42,11 @@ class RawInputBridge(
     fun onFling(direction: SwipeDirection) = send(TmuxKeyMapper.swipeKeyName(direction))
 
     override fun onKeyDown(keyCode: Int, e: KeyEvent, session: TerminalSession): Boolean {
-        if (!enabled()) return false
+        // While composing, swallow key events rather than returning false. TerminalView
+        // falls through to `mTermSession.write(...)` / inputCodePoint() when the client
+        // returns false, which would push the keystrokes into the DUMMY local session
+        // and echo them into the shared emulator on top of the real pane content.
+        if (!enabled()) return true
         val name = TmuxKeyMapper.specialKeyName(keyCode) ?: return false
         // Flush any buffered text FIRST: a special key must not jump ahead of the
         // characters typed before it (e.g. "ls" + Enter).
@@ -56,13 +60,14 @@ class RawInputBridge(
     override fun onKeyUp(keyCode: Int, e: KeyEvent): Boolean = true
 
     override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession): Boolean {
-        if (!enabled()) return false
+        // Same reasoning as onKeyDown: consume, but do not forward while composing.
+        if (!enabled()) return true
         queueLiteral(String(Character.toChars(codePoint)))
         return true
     }
 
     override fun onLongPress(event: MotionEvent): Boolean {
-        if (!enabled()) return false
+        if (!enabled()) return true
         flushPending()
         send("Escape")
         return true

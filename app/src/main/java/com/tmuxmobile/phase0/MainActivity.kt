@@ -57,6 +57,11 @@ fun SpikeScreen(appContext: Context) {
     var paneId by remember { mutableStateOf<String?>(null) }
     var connected by remember { mutableStateOf(false) }
     var viewMode by remember { mutableStateOf("terminal") } // terminal | chat-claude | chat-hermes
+    // Terminal sub-mode: which surface owns input. Toggling this changes both what is
+    // shown AND whether RawInputBridge forwards anything (see `enabled` below); showing
+    // the compose bar while raw key routing stayed live would send every typed character
+    // twice -- once as a pane keystroke, once when Send was pressed.
+    var inputMode by remember { mutableStateOf("raw") } // raw | compose
     val chatEvents = remember { mutableStateListOf<ChatEvent>() }
     val scope = rememberCoroutineScope()
     val session = remember { SshSpikeSession(appContext, HOST, PORT, USERNAME, ASSET_KEY_NAME) }
@@ -110,14 +115,21 @@ fun SpikeScreen(appContext: Context) {
     // Raw-mode input. Keyed on `paneId` so a newly-learned pane id reaches the bridge;
     // the lambda falls back to the session name, since Chat's Send proved the target
     // does not actually need a pane id and an idle session may never emit one.
+    // `enabled` follows inputMode so compose mode owns input exclusively.
     val rawInputBridge = remember(paneId, session) {
-        RawInputBridge(scope, session, target = { paneId ?: SESSION_NAME })
+        RawInputBridge(
+            scope,
+            session,
+            target = { paneId ?: SESSION_NAME },
+            enabled = { inputMode == "raw" },
+        )
     }
 
-    // Flush any buffered raw-mode text when leaving Terminal mode, so a keystroke typed
-    // just before switching view isn't lost, and stop forwarding input while elsewhere.
-    DisposableEffect(viewMode) {
-        onDispose { if (viewMode == "terminal") rawInputBridge.flush() }
+    // Flush any buffered raw-mode text when raw mode gives up input (leaving Terminal
+    // mode, or switching to compose), so a keystroke typed just before the switch isn't
+    // lost or delivered after the user moved on.
+    DisposableEffect(viewMode, inputMode) {
+        onDispose { if (viewMode == "terminal" && inputMode == "raw") rawInputBridge.flush() }
     }
 
     DisposableEffect(Unit) {
@@ -141,12 +153,31 @@ fun SpikeScreen(appContext: Context) {
             Button(onClick = { viewMode = "chat-hermes" }) { Text("Chat: Hermes") }
         }
         if (viewMode == "terminal") {
+            Row {
+                Button(onClick = { inputMode = "raw" }) { Text("Raw") }
+                Button(onClick = { inputMode = "compose" }) { Text("Compose") }
+            }
             TerminalHost(
                 modifier = Modifier.weight(1f),
                 feed = terminalFeed,
                 viewClient = rawInputBridge,
                 onFling = { direction -> rawInputBridge.onFling(direction) },
+                // Compose mode owns focus (its text field must take the IME); raw mode
+                // hands it to the terminal so key events and long-press reach it.
+                focusable = inputMode == "raw",
             )
+            // Only in compose mode: the same shared bar Chat view uses. Raw mode is
+            // keyboard/gesture driven, so a text field there would be redundant.
+            if (inputMode == "compose") {
+                ComposeInputBar(onSend = { text ->
+                    scope.launch {
+                        runCatching { session.sendKeys(paneId ?: SESSION_NAME, text, literal = true) }
+                            .onFailure { e ->
+                                terminalFeed.emit("\r\nSEND ERROR: ${e.message}\r\n")
+                            }
+                    }
+                })
+            }
         } else {
             ChatScreen(events = chatEvents, onSend = { text ->
                 // Target the SESSION, not paneId. paneId is only ever learned from a
