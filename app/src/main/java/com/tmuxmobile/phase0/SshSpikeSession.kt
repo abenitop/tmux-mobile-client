@@ -8,10 +8,12 @@ import kotlinx.coroutines.withContext
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.connection.channel.direct.Session
 import net.schmizz.sshj.transport.verification.PromiscuousVerifier
+import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
 import java.io.OutputStream
+import java.security.Security
 
 class SshSpikeSession(
     private val appContext: Context,
@@ -28,6 +30,8 @@ class SshSpikeSession(
 
     suspend fun connect(sessionName: String) = withContext(Dispatchers.IO) {
         val keyFile = copyAssetKeyToInternalStorage()
+
+        installBouncyCastle()
 
         client = SSHClient()
         // ponytail: host-key verification disabled for this spike only.
@@ -48,6 +52,21 @@ class SshSpikeSession(
         command = session.exec("tmux -CC attach -t $sessionName")
         stdin = command.outputStream
         stdout = BufferedReader(InputStreamReader(command.inputStream))
+    }
+
+    private fun installBouncyCastle() {
+        // Android ships its own stripped-down provider named "BC" (see Google's
+        // "Cryptography Changes in Android P"). sshj's SecurityUtils only adds the
+        // bundled BouncyCastle if Security.getProvider("BC") is null, so without this
+        // the app gets Android's BC, which has no X25519 -> "no such algorithm:
+        // X25519 for provider BC". Replacing the provider is the fix recommended by
+        // both sshj's issue tracker and Apache MINA SSHD's Android docs.
+        if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
+            Security.addProvider(BouncyCastleProvider())
+        } else {
+            Security.removeProvider(BouncyCastleProvider.PROVIDER_NAME)
+            Security.addProvider(BouncyCastleProvider())
+        }
     }
 
     private fun copyAssetKeyToInternalStorage(): File {

@@ -33,6 +33,10 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("com.hierynomus:sshj:0.41.1")
+    // sshj declares BouncyCastle as a runtime-scope dep, so it isn't on the compile
+    // classpath. SshSpikeSession replaces Android's stripped "BC" provider with this
+    // one (Android's has no X25519). Version pinned to sshj 0.41.1's own resolution.
+    implementation("org.bouncycastle:bcprov-jdk18on:1.84")
 
     testImplementation("junit:junit:4.13.2")
 }
