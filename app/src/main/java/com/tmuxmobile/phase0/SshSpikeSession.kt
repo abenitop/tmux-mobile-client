@@ -86,6 +86,22 @@ class SshSpikeSession(
         }
     }
 
+    /**
+     * Opens a SECOND channel on the same authenticated connection and streams the
+     * command's stdout line by line (sshj supports concurrent sessions per SSHClient).
+     * The channel stays open until the remote command exits — callers use it for the
+     * long-lived `tail -F` / poll-loop commands behind Chat view.
+     */
+    fun execStream(command: String): Flow<String> = flow {
+        val execSession = withContext(Dispatchers.IO) { client.startSession() }
+        val execCommand = withContext(Dispatchers.IO) { execSession.exec(command) }
+        val reader = BufferedReader(InputStreamReader(execCommand.inputStream))
+        while (true) {
+            val line = withContext(Dispatchers.IO) { reader.readLine() } ?: break
+            emit(line)
+        }
+    }
+
     suspend fun sendKeys(paneId: String, text: String) = withContext(Dispatchers.IO) {
         val escaped = text.replace("\\", "\\\\").replace("\"", "\\\"")
         stdin.write("send-keys -t $paneId -l \"$escaped\"\n".toByteArray())
