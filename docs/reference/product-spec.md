@@ -2,6 +2,16 @@
 
 Sep 22, 2026 · @Someone
 
+## Now: build scope
+
+Only these get built next. Everything under **Later** is parked until real users ask for it.
+
+1. **Core app (Phase 1)**: done, in device testing.
+2. **Chat view, simple version**: Claude Code and Hermes only. Read the newest log for the pane's directory (Claude Code JSONL) or newest session (Hermes `state.db`), render bubbles, send through the Android-keyboard compose bar. No hooks, no compression lineage, no daemon.
+3. **Play Store beta**: themes, macros, templates, privacy policy, Data Safety form.
+
+The Chat view section below describes the full design; build only the simple version above first.
+
 ## Vision and principles
 
 A native Android tmux client for the Play Store: SSH in, land directly on your tmux sessions, work with the phone's own keyboard. AI-agent supervision is an optional, opt-in layer.
@@ -121,45 +131,74 @@ flowchart TD
 
 Back from Terminal detaches the client view only; the tmux session keeps running.
 
-## Agent layer (optional, Pro)
+## Chat view (any agent CLI)
 
-A separate server companion, installed only by users who want it, reports agent state to the app. Without it, no agent UI appears.
+A readable, chat-style rendering of any agentic CLI session, toggled per session with Terminal. Terminal stays the source of truth. Each agent plugs in through an adapter that turns its own logs into a common message model; Claude Code is the reference adapter.
 
-**Companion daemon (`muxd`, working name)**
+**Adapter interface**
 
-- Single static binary (Go or Rust), runs as a user service.
-- Listens on a Unix socket; the app reaches it through the existing SSH connection (`direct-streamlocal`), so no open ports.
-- Push for when the app is closed: ntfy (self-hostable) or FCM through a relay the user opts into.
+- `detect(pane)`: match on `pane_current_command` and cwd.
+- `locate(pane)`: find the session log (hook-provided path or newest file in the agent's log folder).
+- `stream(offset)`: tail the log over SSH and emit normalized events: `user`, `assistant`, `tool_call`, `tool_result`, `diff`, `permission`, `error`.
+- `answer(permission, choice)`: the keys to send for Allow / Deny on that agent's prompt.
 
-**Vendor-neutral event protocol (JSON lines)**
+| Agent | Session source (verify per version) | Adapter |
+| --- | --- | --- |
+| Claude Code | `~/.claude/projects/<cwd>/<id>.jsonl` | Reference, v1 |
+| Codex CLI | `~/.codex/sessions/` rollout JSONL | v1.1 |
+| Gemini CLI | `~/.gemini/` session files | v1.1 |
+| OpenCode | `~/.local/share/opencode/` storage | Later |
+| Aider | `.aider.chat.history.md` in the repo | Later |
+| Hermes Agent (TUI) | \~/.hermes/state.db (SQLite); profiles under \~/.hermes/profiles/\<name>/ | v1, first-class |
+| Any other TUI | Generic fallback: your sends become bubbles, new pane output between sends becomes the reply | Built in |
 
-```json
-{"v":1,"session":"api","pane":"%3","agent":"claude-code","state":"needs_approval","title":"Edit src/auth.ts","detail":"...","id":"evt_123","ts":1790000000}
-```
+Adapters are declarative where possible (a JSON mapping of log fields to events), so new agents can be added without an app release.
 
-| State | Meaning |
+**Hermes Agent adapter (v1)**
+
+- Source: Hermes keeps conversation history in a SQLite store at `~/.hermes/state.db` (sessions, messages, titles, token counts); each profile has its own under `~/.hermes/profiles/<name>/`.
+- Streaming: poll new rows (`messages` where id > last seen) over SSH with `sqlite3`, or `python3` since Hermes already requires Python. Poll every 1–2 s while Chat is open; stop when backgrounded.
+- Lineage: after context compression Hermes continues in a new session with `parent_session_id`; the adapter follows the chain so the chat reads as one continuous thread.
+- Detection: pane command `hermes`; map to the active session by most recently updated session for that profile, or by an optional hook if Hermes exposes one.
+- Input: compose bar sends to the TUI with `send-keys -l` + Enter; slash commands (`/model`, etc.) as chips.
+- Verify schema per Hermes release; read-only access, never write to `state.db`.
+
+**Reference adapter: Claude Code**
+
+- Claude Code stores each session as JSONL under `~/.claude/projects/<encoded-cwd>/<session-id>.jsonl`; each line is a user, assistant or tool event with content blocks (`text`, `tool_use`, `tool_result`).
+- Pane-to-transcript mapping: an optional `SessionStart` hook writes `$TMUX_PANE`, `session_id` and `transcript_path` (both already in the hook input) to a small file the app reads.
+- Fallback without the hook: the pane's `#{pane_current_command}` is `claude` and `#{pane_current_path}` names the project, so take the newest JSONL in that project folder.
+- Streaming: `tail -n +<offset> -F <transcript>` over an SSH exec channel, parsed line by line. No daemon needed, so Chat can ship in the core app.
+- The transcript format is internal and undocumented: parse tolerantly (unknown events render as a collapsed raw block) and test against pinned Claude Code versions.
+
+**Rendering**
+
+| Transcript element | Chat rendering |
 | --- | --- |
-| `working` | Agent is running |
-| `needs_approval` | Waiting on a permission decision |
-| `needs_input` | Waiting for a prompt or answer |
-| `done` | Task finished |
-| `error` | Agent failed or crashed |
+| User text | Right-aligned bubble |
+| Assistant text | Full-width prose, rendered markdown, large type |
+| `Read`, `Glob`, `Grep` | One-line collapsed chip |
+| `Edit`, `Write` | Inline diff card |
+| `Bash` | Command chip with collapsible monospace output |
+| Tool error | Red chip, expandable |
+| Permission prompt | Inline Allow / Always / Deny card |
+| Thinking | Hidden; optional toggle |
+| Subagent (`Task`) | Collapsed group with its own turns |
 
-**Adapters**
+**Input**
 
-| Agent | Source |
-| --- | --- |
-| Claude Code | Hooks: `Notification`, `Stop`, `PreToolUse` call `muxd emit` |
-| Codex, Gemini CLI, OpenCode, Aider | Their hook/notify config where available |
-| Any TUI (e.g. Hermes) | Generic: `muxd emit` from scripts, or idle/pattern detection on pane output |
+- The Android-keyboard compose bar sends with `send-keys -l` then `Enter` to the pane, exactly as typing in Terminal, so Claude Code sees normal input.
+- Permission cards answer by sending the key Claude Code's prompt expects; the prompt is detected from the `Notification` hook or pane output. Verify key mapping per Claude Code version.
+- Slash commands (`/compact`, `/clear`, `/model`) as chips above the compose bar.
 
-**Pro features built on it**
+**Readability**
 
-- State badges on the session list.
-- Approvals inbox with Approve/Deny from notifications; the app answers by `send-keys` to the right pane.
-- Diff viewer (`git diff` rendered) before approving edits.
-- "While you were away" summary of new scrollback, using the user's own API key or a local model.
-- Multi-server agent dashboard.
+- Body text follows Android font scale plus an in-app slider (15–24sp); text reflows to screen width.
+- Monospace only in code and output blocks, which scroll horizontally; outputs over \~20 lines collapse.
+
+**Out of scope for v1**: rewinding or editing past turns, images in the transcript (placeholder only), agents without readable logs beyond the generic fallback.
+
+**Tier**: Chat view is part of the free core app. The pane-mapping hook stays optional.
 
 ## Security, privacy and Play Store
 
@@ -199,3 +238,47 @@ Free core builds the user base; Pro (subscription or one-time unlock) covers the
 - [ ] Push path: ntfy only, or also an FCM relay you host.
 - [ ] Minimum tmux version to support (control mode quirks before 3.x).
 - [ ] iOS later, or Android only (Kotlin Multiplatform vs native).
+
+# Later (parked)
+
+Not in current scope. Revisit once the core app and Chat view are in daily use and on the Play Store.
+
+## Agent layer (optional, Pro)
+
+A separate server companion, installed only by users who want it, reports agent state to the app. Without it, no agent UI appears.
+
+**Companion daemon (`muxd`, working name)**
+
+- Single static binary (Go or Rust), runs as a user service.
+- Listens on a Unix socket; the app reaches it through the existing SSH connection (`direct-streamlocal`), so no open ports.
+- Push for when the app is closed: ntfy (self-hostable) or FCM through a relay the user opts into.
+
+**Vendor-neutral event protocol (JSON lines)**
+
+```json
+{"v":1,"session":"api","pane":"%3","agent":"claude-code","state":"needs_approval","title":"Edit src/auth.ts","detail":"...","id":"evt_123","ts":1790000000}
+```
+
+| State | Meaning |
+| --- | --- |
+| `working` | Agent is running |
+| `needs_approval` | Waiting on a permission decision |
+| `needs_input` | Waiting for a prompt or answer |
+| `done` | Task finished |
+| `error` | Agent failed or crashed |
+
+**Adapters**
+
+| Agent | Source |
+| --- | --- |
+| Claude Code | Hooks: `Notification`, `Stop`, `PreToolUse` call `muxd emit` |
+| Codex, Gemini CLI, OpenCode, Aider | Their hook/notify config where available |
+| Any TUI (e.g. Hermes) | Generic: `muxd emit` from scripts, or idle/pattern detection on pane output |
+
+**Pro features built on it**
+
+- State badges on the session list.
+- Approvals inbox with Approve/Deny from notifications; the app answers by `send-keys` to the right pane.
+- Diff viewer (`git diff` rendered) before approving edits.
+- "While you were away" summary of new scrollback, using the user's own API key or a local model.
+- Multi-server agent dashboard.
