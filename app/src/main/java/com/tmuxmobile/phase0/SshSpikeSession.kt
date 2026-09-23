@@ -52,6 +52,15 @@ class SshSpikeSession(
         command = session.exec("tmux -CC attach -t $sessionName")
         stdin = command.outputStream
         stdout = BufferedReader(InputStreamReader(command.inputStream))
+
+        // tmux control mode's %output notification only fires on NEW writes to the pane,
+        // so an idle session (nothing written since attach) renders as blank until the
+        // next keystroke. Request a snapshot immediately; the reply comes back as a
+        // %begin/<data>/%end block over this same channel -- the single reader in
+        // lines()'s caller parses it (see SpikeScreen), since a second reader on the same
+        // stdout would race. -e preserves color/attribute escape sequences.
+        stdin.write("capture-pane -p -e -t $sessionName\n".toByteArray())
+        stdin.flush()
     }
 
     private fun installBouncyCastle() {

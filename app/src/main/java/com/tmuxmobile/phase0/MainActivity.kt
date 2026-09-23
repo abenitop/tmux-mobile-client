@@ -75,11 +75,30 @@ fun SpikeScreen(appContext: Context) {
         runCatching {
             session.connect(SESSION_NAME)
             connected = true
+            // The connect()-time capture-pane request replies as a %begin/<data>/%end
+            // block interleaved with ordinary %output notifications on this same
+            // channel -- buffer between %begin and %end and emit it as one snapshot,
+            // otherwise fall through to normal %output handling.
+            var capturingSnapshot = false
+            val snapshotBuf = StringBuilder()
             session.lines().collect { line ->
-                val parsed = ControlModeParser.parseLine(line)
-                if (parsed != null) {
-                    if (paneId == null) paneId = parsed.paneId
-                    terminalFeed.emit(parsed.text)
+                when {
+                    line.startsWith("%begin") -> {
+                        capturingSnapshot = true
+                        snapshotBuf.clear()
+                    }
+                    capturingSnapshot && (line.startsWith("%end") || line.startsWith("%error")) -> {
+                        capturingSnapshot = false
+                        if (snapshotBuf.isNotEmpty()) terminalFeed.emit(snapshotBuf.toString())
+                    }
+                    capturingSnapshot -> snapshotBuf.append(line).append("\r\n")
+                    else -> {
+                        val parsed = ControlModeParser.parseLine(line)
+                        if (parsed != null) {
+                            if (paneId == null) paneId = parsed.paneId
+                            terminalFeed.emit(parsed.text)
+                        }
+                    }
                 }
             }
         }.onFailure { e ->
