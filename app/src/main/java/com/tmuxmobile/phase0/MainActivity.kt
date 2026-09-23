@@ -2,6 +2,8 @@ package com.tmuxmobile.phase0
 
 import android.content.Context
 import android.os.Bundle
+import android.view.KeyEvent
+import android.view.MotionEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
@@ -11,8 +13,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -28,6 +28,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.termux.terminal.TerminalSession
+import com.termux.view.TerminalViewClient
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 
 private const val HOST = "100.66.191.51"
@@ -35,7 +38,6 @@ private const val PORT = 22
 private const val USERNAME = "agent-stack"
 private const val ASSET_KEY_NAME = "phase0_id_ed25519"
 private const val SESSION_NAME = "phase0-test"
-private const val TEST_INPUT = "echo phase0-spike-ok"
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,13 +54,17 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun SpikeScreen(appContext: Context) {
-    var output by remember { mutableStateOf("connecting...\n") }
     var paneId by remember { mutableStateOf<String?>(null) }
     var connected by remember { mutableStateOf(false) }
     var viewMode by remember { mutableStateOf("terminal") } // terminal | chat-claude | chat-hermes
     val chatEvents = remember { mutableStateListOf<ChatEvent>() }
     val scope = rememberCoroutineScope()
     val session = remember { SshSpikeSession(appContext, HOST, PORT, USERNAME, ASSET_KEY_NAME) }
+
+    // Terminal pane output. A SharedFlow (not state) because TerminalHost consumes it
+    // as a stream and appends to the emulator; extraBufferCapacity keeps the collector
+    // from ever suspending on backpressure.
+    val terminalFeed = remember { MutableSharedFlow<String>(extraBufferCapacity = 64) }
 
     LaunchedEffect(Unit) {
         runCatching {
@@ -68,12 +74,14 @@ fun SpikeScreen(appContext: Context) {
                 val parsed = ControlModeParser.parseLine(line)
                 if (parsed != null) {
                     if (paneId == null) paneId = parsed.paneId
-                    output += parsed.text + "\n"
+                    terminalFeed.emit(parsed.text)
                 }
             }
         }.onFailure { e ->
             connected = false
-            output += "ERROR: ${e.message}\n"
+            // No raw-text accumulator to append to any more; surface the failure into
+            // the terminal itself so it stays visible where output used to appear.
+            terminalFeed.emit("\r\nERROR: ${e.message}\r\n")
         }
     }
 
@@ -120,22 +128,11 @@ fun SpikeScreen(appContext: Context) {
             Button(onClick = { viewMode = "chat-hermes" }) { Text("Chat: Hermes") }
         }
         if (viewMode == "terminal") {
-            Text(
-                text = output,
-                modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())
+            TerminalHost(
+                modifier = Modifier.weight(1f),
+                feed = terminalFeed,
+                viewClient = NoOpTerminalViewClient, // replaced by RawInputBridge in Task 3
             )
-            Button(
-                onClick = {
-                    val target = paneId ?: return@Button
-                    scope.launch {
-                        runCatching { session.sendKeys(target, TEST_INPUT) }
-                            .onFailure { e -> output += "SEND ERROR: ${e.message}\n" }
-                    }
-                },
-                enabled = paneId != null
-            ) {
-                Text(if (paneId != null) "Send test input" else "Waiting for pane...")
-            }
         } else {
             ChatScreen(events = chatEvents, onSend = { text ->
                 // Target the SESSION, not paneId. paneId is only ever learned from a
