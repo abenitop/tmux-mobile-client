@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -17,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -49,12 +51,16 @@ class MainActivity : ComponentActivity() {
 fun SpikeScreen(appContext: Context) {
     var output by remember { mutableStateOf("connecting...\n") }
     var paneId by remember { mutableStateOf<String?>(null) }
+    var connected by remember { mutableStateOf(false) }
+    var viewMode by remember { mutableStateOf("terminal") } // terminal | chat-claude | chat-hermes
+    val chatEvents = remember { mutableStateListOf<ChatEvent>() }
     val scope = rememberCoroutineScope()
     val session = remember { SshSpikeSession(appContext, HOST, PORT, USERNAME, ASSET_KEY_NAME) }
 
     LaunchedEffect(Unit) {
         runCatching {
             session.connect(SESSION_NAME)
+            connected = true
             session.lines().collect { line ->
                 val parsed = ControlModeParser.parseLine(line)
                 if (parsed != null) {
@@ -62,7 +68,32 @@ fun SpikeScreen(appContext: Context) {
                     output += parsed.text + "\n"
                 }
             }
-        }.onFailure { e -> output += "ERROR: ${e.message}\n" }
+        }.onFailure { e ->
+            connected = false
+            output += "ERROR: ${e.message}\n"
+        }
+    }
+
+    // Keyed on `connected` as well as viewMode: the chat adapters open a channel on the
+    // already-authenticated client, so starting them before connect() returns would fail
+    // with UninitializedPropertyAccessException. Tapping Chat during connect now simply
+    // starts streaming once the connection is up.
+    LaunchedEffect(viewMode, connected) {
+        if (!connected) return@LaunchedEffect
+        when (viewMode) {
+            "chat-claude" -> {
+                chatEvents.clear()
+                runCatching {
+                    ClaudeCodeChatAdapter(session).events().collect { chatEvents.add(it) }
+                }.onFailure { e -> chatEvents.add(ChatEvent.AssistantMessage("ERROR: ${e.message}")) }
+            }
+            "chat-hermes" -> {
+                chatEvents.clear()
+                runCatching {
+                    HermesChatAdapter(session).events().collect { chatEvents.add(it) }
+                }.onFailure { e -> chatEvents.add(ChatEvent.AssistantMessage("ERROR: ${e.message}")) }
+            }
+        }
     }
 
     DisposableEffect(Unit) {
@@ -70,21 +101,36 @@ fun SpikeScreen(appContext: Context) {
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text(
-            text = output,
-            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())
-        )
-        Button(
-            onClick = {
-                val target = paneId ?: return@Button
+        Row {
+            Button(onClick = { viewMode = "terminal" }) { Text("Terminal") }
+            Button(onClick = { viewMode = "chat-claude" }) { Text("Chat: Claude") }
+            Button(onClick = { viewMode = "chat-hermes" }) { Text("Chat: Hermes") }
+        }
+        if (viewMode == "terminal") {
+            Text(
+                text = output,
+                modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())
+            )
+            Button(
+                onClick = {
+                    val target = paneId ?: return@Button
+                    scope.launch {
+                        runCatching { session.sendKeys(target, TEST_INPUT) }
+                            .onFailure { e -> output += "SEND ERROR: ${e.message}\n" }
+                    }
+                },
+                enabled = paneId != null
+            ) {
+                Text(if (paneId != null) "Send test input" else "Waiting for pane...")
+            }
+        } else {
+            ChatScreen(events = chatEvents, onSend = { text ->
+                val target = paneId ?: return@ChatScreen
                 scope.launch {
-                    runCatching { session.sendKeys(target, TEST_INPUT) }
-                        .onFailure { e -> output += "SEND ERROR: ${e.message}\n" }
+                    runCatching { session.sendKeys(target, text) }
+                        .onFailure { e -> chatEvents.add(ChatEvent.AssistantMessage("SEND ERROR: ${e.message}")) }
                 }
-            },
-            enabled = paneId != null
-        ) {
-            Text(if (paneId != null) "Send test input" else "Waiting for pane...")
+            })
         }
     }
 }
