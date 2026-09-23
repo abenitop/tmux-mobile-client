@@ -102,18 +102,17 @@ class SshSpikeSession(
         }
     }
 
-    suspend fun sendKeys(paneId: String, text: String) = withContext(Dispatchers.IO) {
-        val escaped = text.replace("\\", "\\\\").replace("\"", "\\\"")
+    suspend fun sendKeys(target: String, keys: String, literal: Boolean = true) = withContext(Dispatchers.IO) {
         // Each control-mode command MUST be flushed on its own. If both commands
         // arrive in one write, tmux executes only the first and discards the rest,
         // so "send-keys Enter" was silently dropped and the text was typed but never
         // submitted. Verified against tmux 3.4 over a live control-mode channel:
         // single-flush => only the literal text lands in the pane; one flush per
         // command => the line is typed and submitted.
-        stdin.write("send-keys -t $paneId -l \"$escaped\"\n".toByteArray())
-        stdin.flush()
-        stdin.write("send-keys -t $paneId Enter\n".toByteArray())
-        stdin.flush()
+        for (command in buildSendKeysCommands(target, keys, literal)) {
+            stdin.write(command.toByteArray())
+            stdin.flush()
+        }
     }
 
     fun close() {
@@ -122,3 +121,22 @@ class SshSpikeSession(
         runCatching { client.disconnect() }
     }
 }
+
+/**
+ * Builds the control-mode command lines for one `sendKeys` call, in the order they must
+ * be flushed (see sendKeys for why each needs its own flush).
+ *
+ * `literal = true` types [keys] verbatim into the pane and then submits with Enter;
+ * `literal = false` passes [keys] through as tmux key names ("Up", "Escape", "C-c") and
+ * appends NO Enter, so navigation keys act without submitting a line.
+ *
+ * Order of escapes matters: backslash-doubling runs first, so the backslash introduced
+ * before an embedded quote is not itself doubled.
+ */
+internal fun buildSendKeysCommands(target: String, keys: String, literal: Boolean): List<String> =
+    if (literal) {
+        val escaped = keys.replace("\\", "\\\\").replace("\"", "\\\"")
+        listOf("send-keys -t $target -l \"$escaped\"\n", "send-keys -t $target Enter\n")
+    } else {
+        listOf("send-keys -t $target $keys\n")
+    }
