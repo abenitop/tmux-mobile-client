@@ -33,6 +33,11 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("com.hierynomus:sshj:0.41.1")
+    // Encrypted single-connection storage (Android Keystore-backed). 1.1.0 is the
+    // current stable; EncryptedSharedPreferences/MasterKey are soft-deprecated in this
+    // line but still shipped and functional -- the MVP plan deliberately uses them over
+    // a raw-Tink migration to stay small.
+    implementation("androidx.security:security-crypto:1.1.0")
     // Terminal rendering. Not on Maven Central; JitPack only. terminal-view's POM
     // declares terminal-emulator (which carries the native libtermux.so for all 4
     // ABIs) at compile scope, so it arrives transitively.
