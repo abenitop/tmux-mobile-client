@@ -2,8 +2,12 @@ package com.tmuxmobile.phase0
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.connection.channel.direct.Session
@@ -100,14 +104,31 @@ class SshSpikeSession(
      * command's stdout line by line (sshj supports concurrent sessions per SSHClient).
      * The channel stays open until the remote command exits — callers use it for the
      * long-lived `tail -F` / poll-loop commands behind Chat view.
+     *
+     * callbackFlow, not flow, specifically so the channel can be torn down on
+     * cancellation. A plain `flow { }` parked in a blocking readLine() is never
+     * interrupted by cancellation: the remote command survived and each Chat view visit
+     * leaked another poll loop on the VPS (verified — three toggles turned one running
+     * poll loop into four). awaitClose() runs on collector cancellation and closing the
+     * sshj channel from there is what unblocks the reader; cancelling the pump alone
+     * would not be enough.
      */
-    fun execStream(command: String): Flow<String> = flow {
+    fun execStream(command: String): Flow<String> = callbackFlow {
         val execSession = withContext(Dispatchers.IO) { client.startSession() }
         val execCommand = withContext(Dispatchers.IO) { execSession.exec(command) }
         val reader = BufferedReader(InputStreamReader(execCommand.inputStream))
-        while (true) {
-            val line = withContext(Dispatchers.IO) { reader.readLine() } ?: break
-            emit(line)
+        // trySend (not send) so a stalled collector can never block the reader thread.
+        val pump = launch(Dispatchers.IO) {
+            while (isActive) {
+                val line = reader.readLine() ?: break
+                trySend(line)
+            }
+            close()
+        }
+        awaitClose {
+            pump.cancel()
+            runCatching { execCommand.close() }
+            runCatching { execSession.close() }
         }
     }
 

@@ -30,6 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.termux.terminal.TerminalSession
 import com.termux.view.TerminalViewClient
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 
@@ -62,7 +64,18 @@ fun SpikeScreen(appContext: Context) {
     // the compose bar while raw key routing stayed live would send every typed character
     // twice -- once as a pane keystroke, once when Send was pressed.
     var inputMode by remember { mutableStateOf("raw") } // raw | compose
-    val chatEvents = remember { mutableStateListOf<ChatEvent>() }
+    // One transcript per source, plus a "has this source ever been opened" latch.
+    //
+    // Previously a single list was CLEARED and re-collected on every toggle, so each
+    // visit to a Chat tab re-opened the stream and replayed it from the very first
+    // message -- a 1700+ message session spent the replay parked at the top of the
+    // transcript, which reads as a frozen/blank window. Keeping the lists separate and
+    // never clearing them means a toggle is just a view switch, and a source that has
+    // already been opened keeps streaming in the background.
+    val chatEventsClaude = remember { mutableStateListOf<ChatEvent>() }
+    val chatEventsHermes = remember { mutableStateListOf<ChatEvent>() }
+    var claudeStarted by remember { mutableStateOf(false) }
+    var hermesStarted by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val session = remember { SshSpikeSession(appContext, HOST, PORT, USERNAME, ASSET_KEY_NAME) }
 
@@ -109,26 +122,55 @@ fun SpikeScreen(appContext: Context) {
         }
     }
 
-    // Keyed on `connected` as well as viewMode: the chat adapters open a channel on the
-    // already-authenticated client, so starting them before connect() returns would fail
-    // with UninitializedPropertyAccessException. Tapping Chat during connect now simply
-    // starts streaming once the connection is up.
-    LaunchedEffect(viewMode, connected) {
+    // Keyed on `connected` ALONE. Each source's collect loop runs once, on first connect,
+    // and keeps running for the life of the app -- independent of which tab is showing.
+    //
+    // This MUST NOT be keyed on viewMode: LaunchedEffect cancels + relaunches its whole
+    // block whenever a key changes, so keying on viewMode would cancel a source's
+    // collect() the moment you leave its tab, and the claudeStarted/hermesStarted latch
+    // would then prevent it from ever being re-entered -- permanently stopping that
+    // stream. viewMode only chooses which list to RENDER below; it has no bearing on
+    // which streams are being collected.
+    LaunchedEffect(connected) {
         if (!connected) return@LaunchedEffect
-        when (viewMode) {
-            "chat-claude" -> {
-                chatEvents.clear()
-                runCatching {
-                    ClaudeCodeChatAdapter(session).events().collect { chatEvents.add(it) }
-                }.onFailure { e -> chatEvents.add(ChatEvent.AssistantMessage("ERROR: ${e.message}")) }
+        // Each source is started exactly once (the latch guards against the effect
+        // restarting on reconnect). Both collect() calls run as siblings, so leaving one
+        // tab does not cancel the other's stream.
+        coroutineScope {
+            if (!claudeStarted) {
+                claudeStarted = true
+                launch {
+                    runCatching {
+                        ClaudeCodeChatAdapter(session).events().collect {
+                            if (isActive) chatEventsClaude.add(it)
+                        }
+                    }.onFailure { e ->
+                        if (isActive) chatEventsClaude.add(ChatEvent.AssistantMessage("ERROR: ${e.message}"))
+                    }
+                }
             }
-            "chat-hermes" -> {
-                chatEvents.clear()
-                runCatching {
-                    HermesChatAdapter(session).events().collect { chatEvents.add(it) }
-                }.onFailure { e -> chatEvents.add(ChatEvent.AssistantMessage("ERROR: ${e.message}")) }
+            if (!hermesStarted) {
+                hermesStarted = true
+                launch {
+                    runCatching {
+                        HermesChatAdapter(session).events().collect {
+                            if (isActive) chatEventsHermes.add(it)
+                        }
+                    }.onFailure { e ->
+                        if (isActive) chatEventsHermes.add(ChatEvent.AssistantMessage("ERROR: ${e.message}"))
+                    }
+                }
             }
         }
+    }
+
+    // The transcript the UI shows: the active source's list, or both when neither Chat
+    // tab is open. Built with `key` so each ChatEvent keeps a stable identity across
+    // recomposition -- that is what stops the list from scroll-jumping on every new item.
+    val chatEvents: List<ChatEvent> = when (viewMode) {
+        "chat-claude" -> chatEventsClaude
+        "chat-hermes" -> chatEventsHermes
+        else -> chatEventsClaude + chatEventsHermes
     }
 
     // Raw-mode input. Keyed on `paneId` so a newly-learned pane id reaches the bridge;
@@ -206,7 +248,12 @@ fun SpikeScreen(appContext: Context) {
                 // + Enter works on an idle session with no prior %output.
                 scope.launch {
                     runCatching { session.sendKeys(SESSION_NAME, text) }
-                        .onFailure { e -> chatEvents.add(ChatEvent.AssistantMessage("SEND ERROR: ${e.message}")) }
+                        .onFailure { e ->
+                            // Into the active source's list: `chatEvents` is now a derived
+                            // read-only view and cannot be appended to.
+                            val target = if (viewMode == "chat-claude") chatEventsClaude else chatEventsHermes
+                            target.add(ChatEvent.AssistantMessage("SEND ERROR: ${e.message}"))
+                        }
                 }
             })
         }
