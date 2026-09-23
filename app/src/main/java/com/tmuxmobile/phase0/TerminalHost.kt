@@ -10,7 +10,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.doOnAttach
 import androidx.core.view.doOnLayout
+import android.view.GestureDetector
 import android.view.KeyEvent
 import android.view.MotionEvent
 import com.termux.terminal.TerminalSession
@@ -18,6 +20,10 @@ import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalView
 import com.termux.view.TerminalViewClient
 import kotlinx.coroutines.flow.Flow
+import kotlin.math.abs
+
+/** Minimum drag distance before a gesture counts as a direction, not a tap. */
+private const val MIN_SWIPE_PX = 80f
 
 /**
  * Renders SSH-sourced tmux pane output via Termux's TerminalView. A no-op local
@@ -30,6 +36,7 @@ fun TerminalHost(
     modifier: Modifier = Modifier,
     feed: Flow<String>,
     viewClient: TerminalViewClient,
+    onFling: (SwipeDirection) -> Unit = {},
 ) {
     var session by remember { mutableStateOf<TerminalSession?>(null) }
     var view by remember { mutableStateOf<TerminalView?>(null) }
@@ -54,6 +61,36 @@ fun TerminalHost(
                 // soft-keyboard/IME path is unaffected either way (Task 1 finding).
                 isFocusable = true
                 isFocusableInTouchMode = true
+                // Swipe/fling is NOT part of TerminalViewClient (Task 1 verified), so it
+                // needs a detector on the view itself. The listener ALWAYS returns false:
+                // it only observes. Consuming the event here would stop TerminalView's own
+                // onTouchEvent from ever seeing it, which would break tap-to-focus,
+                // long-press (mClient.onLongPress) and mouse reporting. A deliberate drag
+                // is forwarded as an arrow key; a small minimum distance keeps taps and
+                // text-selection drags from registering as directions.
+                val swipeDetector = GestureDetector(context,
+                    object : GestureDetector.SimpleOnGestureListener() {
+                        override fun onFling(
+                            e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float,
+                        ): Boolean {
+                            val start = e1 ?: return false
+                            val dx = e2.x - start.x
+                            val dy = e2.y - start.y
+                            if (abs(dx) < MIN_SWIPE_PX && abs(dy) < MIN_SWIPE_PX) return false
+                            onFling(
+                                if (abs(dx) > abs(dy)) {
+                                    if (dx > 0) SwipeDirection.RIGHT else SwipeDirection.LEFT
+                                } else {
+                                    if (dy > 0) SwipeDirection.DOWN else SwipeDirection.UP
+                                }
+                            )
+                            return true
+                        }
+                    })
+                setOnTouchListener { _, event ->
+                    swipeDetector.onTouchEvent(event)
+                    false
+                }
                 doOnLayout {
                     val s = TerminalSession(
                         "/system/bin/cat",
@@ -67,6 +104,14 @@ fun TerminalHost(
                     sessionRef.session = s
                     session = s
                 }
+                // Take focus as soon as the view is attached. requestFocus() in this
+                // factory is too early (the view isn't in the hierarchy yet, and
+                // Compose's focus system wins), but a plain tap works -- which made raw
+                // mode look dead until the terminal was tapped. Verified on device: the
+                // focused node at launch was the "Chat: Hermes" button and injected
+                // arrow keys were consumed as focus navigation; after focusing the
+                // terminal, the same keys moved the target TUI's cursor.
+                doOnAttach { requestFocus() }
                 view = this
             }
         },
@@ -97,37 +142,6 @@ fun TerminalHost(
 
 private class SessionRef {
     var session: TerminalSession? = null
-}
-
-/**
- * Placeholder client for Task 2 (rendering only, no input yet). Task 3 replaces this
- * with RawInputBridge; until then the Terminal view accepts no key input at all, which
- * is exactly the behaviour Task 2 is meant to verify.
- */
-object NoOpTerminalViewClient : TerminalViewClient {
-    override fun onScale(scale: Float): Float = 1.0f
-    override fun onSingleTapUp(e: MotionEvent) {}
-    override fun shouldBackButtonBeMappedToEscape(): Boolean = false
-    override fun shouldEnforceCharBasedInput(): Boolean = false
-    override fun shouldUseCtrlSpaceWorkaround(): Boolean = false
-    override fun isTerminalViewSelected(): Boolean = true
-    override fun copyModeChanged(copyMode: Boolean) {}
-    override fun onKeyDown(keyCode: Int, e: KeyEvent, session: TerminalSession): Boolean = false
-    override fun onKeyUp(keyCode: Int, e: KeyEvent): Boolean = false
-    override fun onLongPress(event: MotionEvent): Boolean = false
-    override fun readControlKey(): Boolean = false
-    override fun readAltKey(): Boolean = false
-    override fun readShiftKey(): Boolean = false
-    override fun readFnKey(): Boolean = false
-    override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession): Boolean = false
-    override fun onEmulatorSet() {}
-    override fun logError(tag: String, message: String) { android.util.Log.e(tag, message) }
-    override fun logWarn(tag: String, message: String) { android.util.Log.w(tag, message) }
-    override fun logInfo(tag: String, message: String) { android.util.Log.i(tag, message) }
-    override fun logDebug(tag: String, message: String) {}
-    override fun logVerbose(tag: String, message: String) {}
-    override fun logStackTraceWithMessage(tag: String, message: String, e: Exception) { android.util.Log.e(tag, message, e) }
-    override fun logStackTrace(tag: String, e: Exception) { android.util.Log.e(tag, "stack", e) }
 }
 
 /**

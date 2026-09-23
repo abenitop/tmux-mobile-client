@@ -107,6 +107,19 @@ fun SpikeScreen(appContext: Context) {
         }
     }
 
+    // Raw-mode input. Keyed on `paneId` so a newly-learned pane id reaches the bridge;
+    // the lambda falls back to the session name, since Chat's Send proved the target
+    // does not actually need a pane id and an idle session may never emit one.
+    val rawInputBridge = remember(paneId, session) {
+        RawInputBridge(scope, session, target = { paneId ?: SESSION_NAME })
+    }
+
+    // Flush any buffered raw-mode text when leaving Terminal mode, so a keystroke typed
+    // just before switching view isn't lost, and stop forwarding input while elsewhere.
+    DisposableEffect(viewMode) {
+        onDispose { if (viewMode == "terminal") rawInputBridge.flush() }
+    }
+
     DisposableEffect(Unit) {
         onDispose { session.close() }
     }
@@ -131,7 +144,8 @@ fun SpikeScreen(appContext: Context) {
             TerminalHost(
                 modifier = Modifier.weight(1f),
                 feed = terminalFeed,
-                viewClient = NoOpTerminalViewClient, // replaced by RawInputBridge in Task 3
+                viewClient = rawInputBridge,
+                onFling = { direction -> rawInputBridge.onFling(direction) },
             )
         } else {
             ChatScreen(events = chatEvents, onSend = { text ->

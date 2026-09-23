@@ -39,4 +39,30 @@ class SshSpikeSessionCommandTest {
         assertEquals(2, buildSendKeysCommands("%3", "x", literal = true).size)
         assertEquals(1, buildSendKeysCommands("%3", "x", literal = false).size)
     }
+
+    @Test
+    fun `literal with submit=false types without submitting -- one command, no Enter`() {
+        // Raw mode's IME path sends a SINGLE CHARACTER per onCodePoint call. If that
+        // auto-appended Enter, every keystroke would submit a line in the pane.
+        assertEquals(
+            listOf("send-keys -t %3 -l \"a\"\n"),
+            buildSendKeysCommands("%3", "a", literal = true, submit = false)
+        )
+    }
+
+    @Test
+    fun `non-literal never submits regardless of the submit flag`() {
+        // "Up" is a navigation key, not line input; Submit must not re-introduce Enter.
+        assertEquals(
+            listOf("send-keys -t %3 Up\n"),
+            buildSendKeysCommands("%3", "Up", literal = false, submit = true)
+        )
+    }
+
+    @Test
+    fun `default submit preserves Chat view behavior -- literal defaults to submitting`() {
+        // Chat's onSend calls sendKeys(target, text) with no flags at all; that must
+        // still type AND submit.
+        assertEquals(2, buildSendKeysCommands("%3", "hello", literal = true).size)
+    }
 }

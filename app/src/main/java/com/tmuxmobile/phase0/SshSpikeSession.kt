@@ -102,14 +102,19 @@ class SshSpikeSession(
         }
     }
 
-    suspend fun sendKeys(target: String, keys: String, literal: Boolean = true) = withContext(Dispatchers.IO) {
+    suspend fun sendKeys(
+        target: String,
+        keys: String,
+        literal: Boolean = true,
+        submit: Boolean = true,
+    ) = withContext(Dispatchers.IO) {
         // Each control-mode command MUST be flushed on its own. If both commands
         // arrive in one write, tmux executes only the first and discards the rest,
         // so "send-keys Enter" was silently dropped and the text was typed but never
         // submitted. Verified against tmux 3.4 over a live control-mode channel:
         // single-flush => only the literal text lands in the pane; one flush per
         // command => the line is typed and submitted.
-        for (command in buildSendKeysCommands(target, keys, literal)) {
+        for (command in buildSendKeysCommands(target, keys, literal, submit)) {
             stdin.write(command.toByteArray())
             stdin.flush()
         }
@@ -126,17 +131,30 @@ class SshSpikeSession(
  * Builds the control-mode command lines for one `sendKeys` call, in the order they must
  * be flushed (see sendKeys for why each needs its own flush).
  *
- * `literal = true` types [keys] verbatim into the pane and then submits with Enter;
- * `literal = false` passes [keys] through as tmux key names ("Up", "Escape", "C-c") and
- * appends NO Enter, so navigation keys act without submitting a line.
+ * Three send shapes, and conflating the first two is a real bug source:
+ *  - [literal] + [submit]  -- type text verbatim into the pane, then submit it (Chat's Send).
+ *  - [literal] alone       -- type text verbatim, NO Enter. Raw mode's IME path sends one
+ *                             character per call, so appending Enter here would submit a
+ *                             line on every keystroke.
+ *  - neither               -- pass [keys] through as a tmux key name ("Up", "Escape",
+ *                             "C-c"); never auto-appends Enter, since these are
+ *                             navigation keys, not line input.
  *
  * Order of escapes matters: backslash-doubling runs first, so the backslash introduced
  * before an embedded quote is not itself doubled.
  */
-internal fun buildSendKeysCommands(target: String, keys: String, literal: Boolean): List<String> =
+internal fun buildSendKeysCommands(
+    target: String,
+    keys: String,
+    literal: Boolean,
+    submit: Boolean = true,
+): List<String> =
     if (literal) {
         val escaped = keys.replace("\\", "\\\\").replace("\"", "\\\"")
-        listOf("send-keys -t $target -l \"$escaped\"\n", "send-keys -t $target Enter\n")
+        buildList {
+            add("send-keys -t $target -l \"$escaped\"\n")
+            if (submit) add("send-keys -t $target Enter\n")
+        }
     } else {
         listOf("send-keys -t $target $keys\n")
     }
