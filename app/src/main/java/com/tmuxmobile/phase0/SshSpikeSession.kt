@@ -24,7 +24,8 @@ class SshSpikeSession(
     private val host: String,
     private val port: Int,
     private val username: String,
-    private val assetKeyName: String,
+    private val assetKeyName: String? = null,
+    private val password: String? = null,
 ) {
     private lateinit var client: SSHClient
     private lateinit var session: Session
@@ -33,8 +34,6 @@ class SshSpikeSession(
     private lateinit var stdout: BufferedReader
 
     suspend fun connect(sessionName: String) = withContext(Dispatchers.IO) {
-        val keyFile = copyAssetKeyToInternalStorage()
-
         installBouncyCastle()
 
         client = SSHClient()
@@ -44,7 +43,12 @@ class SshSpikeSession(
         // test session reachable only over Tailscale.
         client.addHostKeyVerifier(PromiscuousVerifier())
         client.connect(host, port)
-        client.authPublickey(username, client.loadKeys(keyFile.absolutePath))
+        if (password != null) {
+            client.authPassword(username, password)
+        } else {
+            val keyFile = copyAssetKeyToInternalStorage()
+            client.authPublickey(username, client.loadKeys(keyFile.absolutePath))
+        }
 
         session = client.startSession()
         // tmux -CC requires a pty on stdin: without one it exits immediately
@@ -53,7 +57,12 @@ class SshSpikeSession(
         // sshj 0.41.1 — this deviates from the plan, which assumed sshj's
         // bare exec() (no pty) was sufficient.
         session.allocateDefaultPTY()
-        command = session.exec("tmux -CC attach -t $sessionName")
+        // Create-or-attach. "attach -t" fails against a server with no tmux session
+        // at all (every prior sub-project only ran against phase0-test, which existed).
+        // "new-session -A" creates the session if missing, attaches if present, either
+        // way entering control mode. Verified (Task 2 Step 3) to behave identically to
+        // plain attach against an existing session.
+        command = session.exec("tmux -CC new-session -A -s $sessionName")
         stdin = command.outputStream
         stdout = BufferedReader(InputStreamReader(command.inputStream))
 
@@ -83,9 +92,12 @@ class SshSpikeSession(
     }
 
     private fun copyAssetKeyToInternalStorage(): File {
-        val keyFile = File(appContext.filesDir, assetKeyName)
+        val keyName = requireNotNull(assetKeyName) {
+            "key auth requested but no assetKeyName supplied (password == null && assetKeyName == null)"
+        }
+        val keyFile = File(appContext.filesDir, keyName)
         if (!keyFile.exists()) {
-            appContext.assets.open(assetKeyName).use { input ->
+            appContext.assets.open(keyName).use { input ->
                 keyFile.outputStream().use { output -> input.copyTo(output) }
             }
         }
