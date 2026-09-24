@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { width:390px; height:844px; background:#FAF9F5; font-family:'Bricolage Grotesque',sans-serif; color:#2C2A26; display:flex; flex-direction:column; overflow:hidden; }
+  .mono { font-family:'JetBrains Mono',monospace; }
+  .bar { display:flex; align-items:center; gap:12px; padding:16px 16px 10px; }
+  .back { width:44px; height:44px; border-radius:22px; border:1px solid #2C2A26; display:flex; align-items:center; justify-content:center; }
+  .bar .title { flex:1; }
+  .bar .title .n { font-size:19px; font-weight:800; }
+  .bar .title .s { font-family:'JetBrains Mono',monospace; font-size:11px; color:#7BC96F; }
+  .tabs { display:flex; gap:6px; padding:4px 16px 12px; }
+  .tab { flex:1; height:34px; border-radius:17px; border:1px solid #D8D2C6; background:#F0EEE6; display:flex; align-items:center; justify-content:center; font-size:12px; color:#3A3730; }
+  .tab.on { background:#0F0E0C; color:#70E080; border-color:#0F0E0C; }
+  .term { margin:0 16px; background:#0F0E0C; border-radius:16px; padding:16px; font-family:'JetBrains Mono',monospace; color:#EDE8DF; }
+  .term .prompt { color:#70E080; font-size:12px; margin-bottom:8px; }
+  .term .out { font-size:12px; color:#A39D92; line-height:1.6; }
+  .term .pbar { margin-top:12px; height:6px; background:#2C2A26; border-radius:3px; overflow:hidden; }
+  .term .pbar i { display:block; width:62%; height:100%; background:#70E080; }
+  .term .pct { margin-top:6px; font-size:11px; color:#7BC96F; }
+  .chat { flex:1; padding:14px 16px; display:flex; flex-direction:column; gap:10px; overflow:hidden; }
+  .bub { max-width:80%; padding:10px 14px; border-radius:16px; font-size:14px; line-height:1.4; }
+  .bub.me { align-self:flex-end; background:#0F0E0C; color:#EDE8DF; border-bottom-right-radius:6px; }
+  .bub.ai { align-self:flex-start; background:#EDE8DF; color:#2C2A26; border-bottom-left-radius:6px; }
+  .compose { margin:0 16px 12px; background:#EDE8DF; border-radius:24px; padding:8px 8px 8px 16px; display:flex; align-items:center; gap:8px; }
+  .compose .txt { flex:1; font-size:14px; color:#A39D92; }
+  .compose .raw { font-family:'JetBrains Mono',monospace; font-size:10px; color:#70E080; background:#0F0E0C; border-radius:14px; padding:8px 10px; white-space:nowrap; }
+  .kbd { text-align:center; font-size:11px; color:#A39D92; padding:0 16px 20px; }
+</style></head><body>
+  <div class="bar">
+    <div class="back">‹</div>
+    <div class="title"><div class="n">hermes</div><div class="s">● working</div></div>
+    <div class="badge green" style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;background:#7BC96F;color:#142514;padding:4px 10px;border-radius:12px;">LIVE</div>
+  </div>
+  <div class="tabs"><div class="tab on">1 agent</div><div class="tab">2 logs</div><div class="tab">3 shell</div></div>
+  <div class="term">
+    <div class="prompt">$ hermes run ingest --source tibetan/</div>
+    <div class="out">Loading 1,284 documents<br>Chunking</div>
+    <div class="pbar"><i></i></div>
+    <div class="pct">62% &nbsp; batch 41/66 · 812 chunks embedded</div>
+  </div>
+  <div class="chat">
+    <div class="bub me">› Summarize progress when done</div>
+    <div class="bub ai">Queued. I'll report after the final batch.</div>
+  </div>
+  <div class="compose"><span class="txt">/compact &nbsp;run tests &nbsp;status?</span><span class="raw">RAW Message to pane</span></div>
+  <div class="kbd">[ Android keyboard — Gboard, SwiftKey, voice ]</div>
+</body></html>

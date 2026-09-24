@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { width:390px; height:844px; background:#FAF9F5; font-family:'Bricolage Grotesque',sans-serif; color:#2C2A26; display:flex; flex-direction:column; overflow:hidden; }
+  .mono { font-family:'JetBrains Mono',monospace; }
+  .bar { display:flex; align-items:center; gap:12px; padding:14px 16px; background:#EDE8DF; }
+  .avatar { width:40px; height:40px; border-radius:20px; background:#0F0E0C; color:#70E080; display:flex; align-items:center; justify-content:center; font-family:'JetBrains Mono',monospace; font-weight:700; }
+  .bar .t { flex:1; }
+  .bar .t .n { font-size:16px; font-weight:700; }
+  .bar .t .s { font-family:'JetBrains Mono',monospace; font-size:11px; color:#7BC96F; }
+  .bar .act { width:36px; height:36px; border-radius:18px; border:1px solid #D8D2C6; display:flex; align-items:center; justify-content:center; color:#A39D92; }
+  .thread { flex:1; padding:14px 16px; display:flex; flex-direction:column; gap:8px; overflow:hidden; }
+  .bub { max-width:82%; padding:10px 14px; border-radius:16px; font-size:14px; line-height:1.45; }
+  .bub.me { align-self:flex-end; background:#0F0E0C; color:#EDE8DF; border-bottom-right-radius:6px; }
+  .bub.ai { align-self:flex-start; background:#EDE8DF; color:#2C2A26; border-bottom-left-radius:6px; }
+  .bub .time { display:block; font-family:'JetBrains Mono',monospace; font-size:9px; color:#A39D92; margin-top:4px; text-align:right; }
+  .bub.me .time { color:#A39D92; }
+  .card { align-self:stretch; background:#0F0E0C; border-radius:14px; padding:12px 14px; font-family:'JetBrains Mono',monospace; font-size:11px; color:#EDE8DF; line-height:1.6; }
+  .card .g { color:#70E080; }
+  .day { align-self:center; font-size:10px; color:#A39D92; font-family:'JetBrains Mono',monospace; margin:6px 0; }
+  .compose { margin:0 12px 12px; background:#EDE8DF; border-radius:26px; padding:8px 8px 8px 18px; display:flex; align-items:center; gap:8px; }
+  .compose .txt { flex:1; font-size:14px; color:#A39D92; }
+  .send { width:40px; height:40px; border-radius:20px; background:#70E080; color:#142514; display:flex; align-items:center; justify-content:center; font-size:18px; }
+</style></head><body>
+  <div class="bar">
+    <div class="avatar">tm</div>
+    <div class="t"><div class="n">api-refactor</div><div class="s">● claude · working</div></div>
+    <div class="act">⋮</div>
+  </div>
+  <div class="thread">
+    <div class="day">TODAY</div>
+    <div class="bub me">Run the auth test suite and fix what's red.<span class="time">14:02 ✓✓</span></div>
+    <div class="bub ai">3 failing — session refresh + rotate. Patching now.<span class="time">14:03</span></div>
+    <div class="card"><span class="g">$</span> pytest tests/auth -q<br><span class="g">..F.F</span><br>2 passed, 2 failed in 1.8s</div>
+    <div class="bub ai">Replaced the manual expiry checks with signature verification. 2 of 3 now pass.<span class="time">14:05</span></div>
+    <div class="bub me">Nice. Push it and open a PR.<span class="time">14:06 ✓✓</span></div>
+  </div>
+  <div class="compose"><span class="txt">Message…</span><div class="send">➤</div></div>
+</body></html>

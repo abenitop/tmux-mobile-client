@@ -1,0 +1,25 @@
+<svg width="760" height="200" viewBox="0 0 760 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#005C4B"/>
+      <stop offset="1" stop-color="#00332A"/>
+    </linearGradient>
+    <symbol id="mark" viewBox="0 0 512 512">
+      <rect x="56" y="56" width="400" height="400" rx="88" fill="url(#tile)"/>
+      <rect x="56" y="56" width="400" height="400" rx="88" fill="none" stroke="#7EE787" stroke-opacity="0.12" stroke-width="3"/>
+      <g stroke="#7EE787" stroke-width="40" stroke-linecap="round" stroke-linejoin="round" fill="none">
+        <path d="M148 180 V340"/>
+        <path d="M108 180 H188"/>
+        <path d="M258 340 V225"/>
+        <path d="M258 225 Q258 185 280 185 Q302 185 302 225"/>
+        <path d="M302 225 V340"/>
+        <path d="M302 225 Q302 185 324 185 Q346 185 346 225"/>
+        <path d="M346 225 V340"/>
+      </g>
+      <rect x="372" y="225" width="40" height="115" rx="8" fill="#7EE787"/>
+    </symbol>
+  </defs>
+  <use href="#mark" x="24" y="24" width="128" height="128"/>
+  <text x="176" y="112" font-family="DejaVu Sans, sans-serif" font-weight="bold" font-size="60" fill="#00332A">Tmux-Max</text>
+  <text x="178" y="150" font-family="DejaVu Sans Mono, monospace" font-size="24" letter-spacing="6" fill="#1B9C6B">MOBILE</text>
+</svg>

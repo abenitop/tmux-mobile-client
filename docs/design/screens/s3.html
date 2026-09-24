@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { width:390px; height:844px; background:#FAF9F5; font-family:'Bricolage Grotesque',sans-serif; color:#2C2A26; display:flex; flex-direction:column; overflow:hidden; }
+  .mono { font-family:'JetBrains Mono',monospace; }
+  .bar { display:flex; align-items:center; gap:12px; padding:16px; }
+  .back { width:44px; height:44px; border-radius:22px; border:1px solid #2C2A26; display:flex; align-items:center; justify-content:center; }
+  .bar .crumb { font-family:'JetBrains Mono',monospace; font-size:12px; color:#A39D92; }
+  .body { padding:0 16px; display:flex; flex-direction:column; gap:12px; flex:1; overflow:hidden; }
+  .pill { align-self:flex-start; font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:600; background:#F2A93B; color:#1A1305; padding:4px 12px; border-radius:12px; }
+  .h { font-size:24px; font-weight:800; }
+  .path { font-family:'JetBrains Mono',monospace; font-size:12px; color:#A39D92; }
+  .diff { background:#0F0E0C; border-radius:16px; padding:16px; font-family:'JetBrains Mono',monospace; font-size:12px; line-height:1.7; color:#EDE8DF; }
+  .diff .ln { color:#A39D92; }
+  .diff .add { color:#7BC96F; }
+  .diff .del { color:#F29A8F; }
+  .diff .ctx { color:#EDE8DF; }
+  .away { background:#F0EEE6; border-radius:14px; padding:12px 14px; font-size:13px; color:#3A3730; }
+  .away b { font-family:'JetBrains Mono',monospace; font-size:10px; color:#A39D92; letter-spacing:1px; }
+  .btns { display:flex; gap:8px; margin-top:4px; }
+  .btn { flex:1; height:46px; border-radius:23px; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:600; }
+  .btn.deny { background:#2A1413; color:#F29A8F; }
+  .btn.note { background:#F0EEE6; color:#3A3730; }
+  .btn.approve { background:#9FDC92; color:#142514; }
+  .btn.term { flex:0 0 auto; padding:0 18px; background:#0F0E0C; color:#70E080; font-family:'JetBrains Mono',monospace; font-size:12px; }
+</style></head><body>
+  <div class="bar"><div class="back">‹</div><span class="crumb">api-refactor · window 1</span></div>
+  <div class="body">
+    <div class="pill">CLAUDE WANTS TO</div>
+    <div class="h">Edit session.ts</div>
+    <div class="path">src/auth/session.ts · +6 2</div>
+    <div class="diff">
+      <div class="ln">@@ -41,8 +41,12 @@</div>
+      <div class="ctx">&nbsp;export function refresh(token) {</div>
+      <div class="ctx">&nbsp;&nbsp;const exp = decode(token).exp;</div>
+      <div class="ctx">&nbsp;&nbsp;if (exp &lt; now()) throw err;</div>
+      <div class="add">+&nbsp;&nbsp;const claims = verify(token, KEY);</div>
+      <div class="add">+&nbsp;&nbsp;if (!claims) return null;</div>
+      <div class="add">+&nbsp;&nbsp;if (claims.exp &lt; now()) {</div>
+      <div class="add">+&nbsp;&nbsp;&nbsp;&nbsp;return rotate(claims.sub);</div>
+      <div class="add">+&nbsp;&nbsp;}</div>
+      <div class="ctx">&nbsp;&nbsp;return issue(claims.sub);</div>
+    </div>
+    <div class="away"><b>WHILE YOU WERE AWAY</b><br>Replaced manual expiry checks with signature verification; 2 of 3 auth tests now pass.</div>
+    <div class="btns">
+      <div class="btn deny">Deny</div>
+      <div class="btn note">Reply with note</div>
+      <div class="btn approve">Approve</div>
+    </div>
+    <div class="btn term">Open terminal</div>
+  </div>
+</body></html>
