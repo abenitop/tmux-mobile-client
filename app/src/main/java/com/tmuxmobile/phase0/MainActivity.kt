@@ -40,24 +40,36 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val store = ConnectionStore(applicationContext)
         setContent {
-            MaterialTheme {
+            TmuxMobileTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     var connection by remember { mutableStateOf(store.load()) }
+                    var mismatch by remember { mutableStateOf(false) }
                     val current = connection
-                    if (current == null) {
-                        ConnectScreen(onConnect = { c ->
-                            store.save(c)
-                            connection = c
-                        })
-                    } else {
-                        SpikeScreen(
+                    when {
+                        current != null && mismatch -> HostKeyMismatchScreen(
+                            connection = current,
+                            onGoBack = {
+                                mismatch = false
+                                store.clear()
+                                connection = null
+                            },
+                        )
+                        current != null -> SpikeScreen(
                             appContext = applicationContext,
                             connection = current,
                             onForget = {
                                 store.clear()
                                 connection = null
                             },
+                            onHostKeyMismatch = { mismatch = true },
+                            onHostKeyFingerprintLearned = { fingerprint ->
+                                store.saveHostKeyFingerprint(fingerprint)
+                            },
                         )
+                        else -> ConnectScreen(onConnect = { c ->
+                            store.save(c)
+                            connection = c
+                        })
                     }
                 }
             }
@@ -66,7 +78,13 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun SpikeScreen(appContext: Context, connection: Connection, onForget: () -> Unit) {
+fun SpikeScreen(
+    appContext: Context,
+    connection: Connection,
+    onForget: () -> Unit,
+    onHostKeyMismatch: () -> Unit,
+    onHostKeyFingerprintLearned: (String) -> Unit,
+) {
     var paneId by remember { mutableStateOf<String?>(null) }
     var connected by remember { mutableStateOf(false) }
     var viewMode by remember { mutableStateOf("terminal") } // terminal | chat-claude | chat-hermes
@@ -88,6 +106,15 @@ fun SpikeScreen(appContext: Context, connection: Connection, onForget: () -> Uni
     var claudeStarted by remember { mutableStateOf(false) }
     var hermesStarted by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    // Trust-on-first-use. The verifier is created with the fingerprint already stored for
+    // this host (null on the very first connect) and reports the fingerprint it saw on
+    // first connect so it can be pinned for every later connect. `mismatch` is read after
+    // a failed connect() to tell "wrong host key" apart from "unreachable".
+    val hostKeyVerifier = remember {
+        TofuHostKeyVerifier(connection.hostKeyFingerprint) { fingerprint ->
+            onHostKeyFingerprintLearned(fingerprint)
+        }
+    }
     val session = remember {
         SshSpikeSession(
             appContext,
@@ -95,6 +122,7 @@ fun SpikeScreen(appContext: Context, connection: Connection, onForget: () -> Uni
             connection.port,
             connection.username,
             password = connection.password,
+            hostKeyVerifier = hostKeyVerifier,
         )
     }
 
@@ -135,9 +163,16 @@ fun SpikeScreen(appContext: Context, connection: Connection, onForget: () -> Uni
             }
         }.onFailure { e ->
             connected = false
-            // No raw-text accumulator to append to any more; surface the failure into
-            // the terminal itself so it stays visible where output used to appear.
-            terminalFeed.emit("\r\nERROR: ${e.message}\r\n")
+            // A host key that differs from the pinned one is not a connection error to
+            // print into the terminal -- hand it to the screen, which shows the mismatch
+            // warning instead of a terminal that never connected.
+            if (hostKeyVerifier.mismatch) {
+                onHostKeyMismatch()
+            } else {
+                // No raw-text accumulator to append to any more; surface the failure into
+                // the terminal itself so it stays visible where output used to appear.
+                terminalFeed.emit("\r\nERROR: ${e.message}\r\n")
+            }
         }
     }
 

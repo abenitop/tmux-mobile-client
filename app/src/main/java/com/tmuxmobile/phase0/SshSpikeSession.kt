@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.connection.channel.direct.Session
+import net.schmizz.sshj.transport.verification.HostKeyVerifier
 import net.schmizz.sshj.transport.verification.PromiscuousVerifier
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.io.BufferedReader
@@ -26,6 +27,7 @@ class SshSpikeSession(
     private val username: String,
     private val assetKeyName: String? = null,
     private val password: String? = null,
+    private val hostKeyVerifier: HostKeyVerifier = PromiscuousVerifier(),
 ) {
     private lateinit var client: SSHClient
     private lateinit var session: Session
@@ -37,11 +39,11 @@ class SshSpikeSession(
         installBouncyCastle()
 
         client = SSHClient()
-        // ponytail: host-key verification disabled for this spike only.
-        // Phase 1 must pin the VPS's real host key fingerprint instead of
-        // trusting blindly — fine for now since the target is a throwaway
-        // test session reachable only over Tailscale.
-        client.addHostKeyVerifier(PromiscuousVerifier())
+        // Host key is judged by [hostKeyVerifier]. The default stays PromiscuousVerifier
+        // so the key-auth dev-testing call site is unchanged; the real connection flow
+        // passes a TofuHostKeyVerifier (see SpikeScreen), which pins the key seen on
+        // first connect and rejects a different one afterwards.
+        client.addHostKeyVerifier(hostKeyVerifier)
         client.connect(host, port)
         if (password != null) {
             client.authPassword(username, password)

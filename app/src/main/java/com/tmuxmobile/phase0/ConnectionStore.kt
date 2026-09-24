@@ -10,6 +10,11 @@ data class Connection(
     val username: String,
     val password: String,
     val sessionName: String,
+    /**
+     * Trust-on-first-use host key. Null means "never connected to this host yet"; filled
+     * in on the first successful handshake, then enforced on every later connect.
+     */
+    val hostKeyFingerprint: String? = null,
 )
 
 /**
@@ -33,6 +38,7 @@ class ConnectionStore(context: Context) {
             .putString("username", connection.username)
             .putString("password", connection.password)
             .putString("sessionName", connection.sessionName)
+            .putString("hostKeyFingerprint", connection.hostKeyFingerprint)
             .apply()
     }
 
@@ -41,7 +47,19 @@ class ConnectionStore(context: Context) {
         val username = prefs.getString("username", null) ?: return null
         val password = prefs.getString("password", null) ?: return null
         val sessionName = prefs.getString("sessionName", null) ?: return null
-        return Connection(hostname, prefs.getInt("port", 22), username, password, sessionName)
+        return Connection(
+            hostname = hostname,
+            port = prefs.getInt("port", 22),
+            username = username,
+            password = password,
+            sessionName = sessionName,
+            hostKeyFingerprint = prefs.getString("hostKeyFingerprint", null),
+        )
+    }
+
+    /** Records the host key seen on first connect. Keeps every other field as stored. */
+    fun saveHostKeyFingerprint(fingerprint: String) {
+        prefs.edit().putString("hostKeyFingerprint", fingerprint).apply()
     }
 
     fun clear() {
