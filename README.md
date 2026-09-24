@@ -40,6 +40,10 @@ The APK lands at `app/build/outputs/apk/debug/app-debug.apk`.
 - `app/src/main/java/com/tmuxmobile/phase0/` — source.
 - `app/src/test/` — unit tests.
 
+## Author
+
+Ramlix — <abenitop@gmail.com>
+
 ## License
 
 GPL-3.0. See [LICENSE](LICENSE).
