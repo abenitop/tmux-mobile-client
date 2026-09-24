@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.devtools.ksp")
 }
 
 android {
@@ -47,7 +48,19 @@ dependencies {
     // one (Android's has no X25519). Version pinned to sshj 0.41.1's own resolution.
     implementation("org.bouncycastle:bcprov-jdk18on:1.84")
 
+    // Host storage. KSP resolves to 2.3.12: there is no KSP build for Kotlin 2.4.x yet,
+    // and 2.3.12 is verified working against this project's Kotlin 2.4.20 (kspDebugKotlin
+    // runs and Room generates its implementations).
+    implementation("androidx.room:room-runtime:2.8.5")
+    // room-ktx supplies the Flow return type and coroutine support for the DAO.
+    implementation("androidx.room:room-ktx:2.8.5")
+    ksp("androidx.room:room-compiler:2.8.5")
+
+    // Hosts -> Host form -> Session graph.
+    implementation("androidx.navigation:navigation-compose:2.10.2")
+
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     // The Android SDK's org.json is a *stub* on the JVM unit-test classpath (methods
     // throw "not mocked"), so the mappers can't be tested without a real
     // implementation. Test-scope only: the app keeps using the SDK's bundled org.json.

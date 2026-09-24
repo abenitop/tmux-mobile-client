@@ -20,6 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -28,53 +29,124 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.termux.terminal.TerminalSession
 import com.termux.view.TerminalViewClient
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val store = ConnectionStore(applicationContext)
+        val repository = HostRepository(
+            AppDatabase.get(applicationContext).hostDao(),
+            EncryptedPasswordStore(applicationContext),
+        )
         setContent {
             TmuxMobileTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    var connection by remember { mutableStateOf(store.load()) }
-                    var mismatch by remember { mutableStateOf(false) }
-                    val current = connection
-                    when {
-                        current != null && mismatch -> HostKeyMismatchScreen(
-                            connection = current,
-                            onGoBack = {
-                                mismatch = false
-                                store.clear()
-                                connection = null
-                            },
-                        )
-                        current != null -> SpikeScreen(
-                            appContext = applicationContext,
-                            connection = current,
-                            onForget = {
-                                store.clear()
-                                connection = null
-                            },
-                            onHostKeyMismatch = { mismatch = true },
-                            onHostKeyFingerprintLearned = { fingerprint ->
-                                store.saveHostKeyFingerprint(fingerprint)
-                            },
-                        )
-                        else -> ConnectScreen(onConnect = { c ->
-                            store.save(c)
-                            connection = c
-                        })
+                    val navController = rememberNavController()
+                    val scope = rememberCoroutineScope()
+                    val hosts by repository.observeHosts().collectAsState(initial = emptyList())
+
+                    NavHost(navController = navController, startDestination = "hosts") {
+                        composable("hosts") {
+                            HostsScreen(
+                                hosts = hosts,
+                                onConnect = { host -> navController.navigate("session/${host.id}") },
+                                onAdd = { navController.navigate("host_form") },
+                                onEdit = { host -> navController.navigate("host_form?hostId=${host.id}") },
+                                onDelete = { host -> scope.delete(host, repository) },
+                            )
+                        }
+
+                        composable(
+                            "host_form?hostId={hostId}",
+                            arguments = listOf(navArgument("hostId") {
+                                type = NavType.LongType
+                                defaultValue = 0L
+                            }),
+                        ) { backStackEntry ->
+                            val hostId = backStackEntry.arguments?.getLong("hostId") ?: 0L
+                            var existing by remember { mutableStateOf<Host?>(null) }
+                            var existingPassword by remember { mutableStateOf<String?>(null) }
+                            LaunchedEffect(hostId) {
+                                if (hostId != 0L) {
+                                    existing = repository.host(hostId)
+                                    existingPassword = repository.passwordFor(hostId)
+                                }
+                            }
+                            HostFormScreen(
+                                existing = existing,
+                                existingPassword = existingPassword,
+                                onSave = { host, password ->
+                                    scope.launch {
+                                        repository.save(host, password)
+                                        navController.popBackStack()
+                                    }
+                                },
+                                onCancel = { navController.popBackStack() },
+                            )
+                        }
+
+                        composable(
+                            "session/{hostId}",
+                            arguments = listOf(navArgument("hostId") { type = NavType.LongType }),
+                        ) { backStackEntry ->
+                            val hostId = backStackEntry.arguments?.getLong("hostId") ?: return@composable
+                            var host by remember { mutableStateOf<Host?>(null) }
+                            var password by remember { mutableStateOf<String?>(null) }
+                            var mismatch by remember { mutableStateOf(false) }
+                            LaunchedEffect(hostId) {
+                                host = repository.host(hostId)
+                                password = repository.passwordFor(hostId)
+                            }
+                            val currentHost = host
+                            val currentPassword = password
+                            when {
+                                currentHost != null && mismatch -> HostKeyMismatchScreen(
+                                    connection = currentHost.toConnection(currentPassword.orEmpty()),
+                                    onGoBack = { navController.popBackStack() },
+                                )
+                                currentHost != null && currentPassword != null -> SpikeScreen(
+                                    appContext = applicationContext,
+                                    connection = currentHost.toConnection(currentPassword),
+                                    onForget = { navController.popBackStack() },
+                                    onHostKeyMismatch = { mismatch = true },
+                                    onHostKeyFingerprintLearned = { fingerprint ->
+                                        scope.launch {
+                                            repository.recordHostKeyFingerprint(hostId, fingerprint)
+                                        }
+                                    },
+                                )
+                                // else: host/password still loading -- a brief blank frame.
+                            }
+                        }
                     }
                 }
             }
         }
     }
+}
+
+private fun Host.toConnection(password: String) = Connection(
+    hostname = hostname,
+    port = port,
+    username = username,
+    password = password,
+    sessionName = sessionName,
+    hostKeyFingerprint = hostKeyFingerprint,
+)
+
+private fun CoroutineScope.delete(host: Host, repository: HostRepository) {
+    launch { repository.delete(host) }
 }
 
 @Composable
