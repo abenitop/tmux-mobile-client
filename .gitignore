@@ -5,4 +5,4 @@ local.properties
 .idea/
 *.iml
 .DS_Store
-app/src/main/assets/phase0_id_ed25519
+app/src/main/assets/
