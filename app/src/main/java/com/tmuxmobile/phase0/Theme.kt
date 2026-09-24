@@ -27,6 +27,9 @@ internal val BubbleMine = androidx.compose.ui.graphics.Color(0xFF005C4B)
 internal val BubbleTheirs = androidx.compose.ui.graphics.Color(0xFF202C33)
 internal val BubbleToolChip = androidx.compose.ui.graphics.Color(0xFF1F2C34)
 internal val BubbleText = androidx.compose.ui.graphics.Color(0xFFE9EDEF)
+internal val DiffAdded = androidx.compose.ui.graphics.Color(0xFF7EE787)
+internal val DiffRemoved = androidx.compose.ui.graphics.Color(0xFFFF7B72)
+internal val PermissionCardColor = androidx.compose.ui.graphics.Color(0xFF2A3942)
 
 @Composable
 fun TmuxMobileTheme(content: @Composable () -> Unit) {

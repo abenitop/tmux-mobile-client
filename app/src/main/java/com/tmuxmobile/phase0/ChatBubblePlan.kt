@@ -44,5 +44,9 @@ internal fun chatBubblePlan(events: List<ChatEvent>): List<BubbleRow> =
 
 private fun sideOf(event: ChatEvent): BubbleSide = when (event) {
     is ChatEvent.UserMessage -> BubbleSide.Mine
-    is ChatEvent.AssistantMessage, is ChatEvent.ToolCallChip -> BubbleSide.Theirs
+    is ChatEvent.AssistantMessage,
+    is ChatEvent.ToolCallChip,
+    is ChatEvent.DiffCard,
+    is ChatEvent.PermissionPrompt,
+    -> BubbleSide.Theirs
 }

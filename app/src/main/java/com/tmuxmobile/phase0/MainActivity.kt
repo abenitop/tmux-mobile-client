@@ -131,6 +131,29 @@ fun SpikeScreen(
     // from ever suspending on backpressure.
     val terminalFeed = remember { MutableSharedFlow<String>(extraBufferCapacity = 64) }
 
+    // Rolling tail of recent pane output, used to recognise a permission prompt. The
+    // prompt's question and its option rows can arrive in separate %output chunks, so a
+    // single chunk is not enough to parse one. Bounded so a long-running session cannot
+    // grow it without limit.
+    val paneTail = remember { StringBuilder() }
+    var lastPrompt by remember { mutableStateOf<ChatEvent.PermissionPrompt?>(null) }
+
+    // Detection lives on the pane-output path rather than a polling loop: the prompt is
+    // written to the pane, so it arrives on the same %output stream the terminal renders.
+    fun appendPaneOutput(text: String) {
+        paneTail.append(text)
+        if (paneTail.length > 4000) paneTail.delete(0, paneTail.length - 4000)
+        val detected = PermissionPromptDetector.detect(paneTail.toString())
+        // Only surface a CHANGE, and only into the Claude transcript: without this the
+        // same prompt is re-added on every %output chunk while it sits on screen.
+        if (detected != null && detected != lastPrompt) {
+            lastPrompt = detected
+            chatEventsClaude.add(detected)
+        }
+        // Session must contain exactly one permission prompt row, and this clears it.
+        if (detected == null) lastPrompt = null
+    }
+
     LaunchedEffect(Unit) {
         runCatching {
             session.connect(connection.sessionName)
@@ -157,6 +180,7 @@ fun SpikeScreen(
                         if (parsed != null) {
                             if (paneId == null) paneId = parsed.paneId
                             terminalFeed.emit(parsed.text)
+                            appendPaneOutput(parsed.text)
                         }
                     }
                 }
@@ -295,22 +319,41 @@ fun SpikeScreen(
                 })
             }
         } else {
-            ChatScreen(events = chatEvents, onSend = { text ->
-                // Target the SESSION, not paneId. paneId is only ever learned from a
-                // %output line, and an idle session emits none -- so gating send on
-                // paneId made Chat's Send silently do nothing (the draft cleared, but
-                // onSend had already returned). Verified: `send-keys -t phase0-test -l`
-                // + Enter works on an idle session with no prior %output.
-                scope.launch {
-                    runCatching { session.sendKeys(connection.sessionName, text) }
-                        .onFailure { e ->
-                            // Into the active source's list: `chatEvents` is now a derived
-                            // read-only view and cannot be appended to.
-                            val target = if (viewMode == "chat-claude") chatEventsClaude else chatEventsHermes
-                            target.add(ChatEvent.AssistantMessage("SEND ERROR: ${e.message}"))
+            ChatScreen(
+                events = chatEvents,
+                onSend = { text ->
+                    // Target the SESSION, not paneId. paneId is only ever learned from a
+                    // %output line, and an idle session emits none -- so gating send on
+                    // paneId made Chat's Send silently do nothing (the draft cleared, but
+                    // onSend had already returned). Verified: `send-keys -t phase0-test -l`
+                    // + Enter works on an idle session with no prior %output.
+                    scope.launch {
+                        runCatching { session.sendKeys(connection.sessionName, text) }
+                            .onFailure { e ->
+                                // Into the active source's list: `chatEvents` is now a derived
+                                // read-only view and cannot be appended to.
+                                val target = if (viewMode == "chat-claude") chatEventsClaude else chatEventsHermes
+                                target.add(ChatEvent.AssistantMessage("SEND ERROR: ${e.message}"))
+                            }
+                    }
+                },
+                onAnswer = { keys ->
+                    // A permission answer is a key sequence (arrow keys + Enter), never
+                    // literal text, so literal=false and no auto-submit.
+                    scope.launch {
+                        runCatching {
+                            session.sendKeys(
+                                target = connection.sessionName,
+                                keys = keys,
+                                literal = false,
+                                submit = false,
+                            )
+                        }.onFailure { e ->
+                            chatEventsClaude.add(ChatEvent.AssistantMessage("ANSWER ERROR: ${e.message}"))
                         }
-                }
-            })
+                    }
+                },
+            )
         }
     }
 }
