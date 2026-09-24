@@ -56,8 +56,9 @@ fun TerminalHost(
                 setTextSize(30)
                 // TerminalView paints no background once an emulator is attached, so
                 // default-color text is nearly invisible against the app's window --
-                // must set this explicitly (Task 1 finding).
-                setBackgroundColor(0xFF000000.toInt())
+                // must set this explicitly (Task 1 finding). #0F0E0C is the v2 terminal
+                // bg token (warm near-black, not pure #000).
+                setBackgroundColor(0xFF0F0E0C.toInt())
                 // Hardware/injected key events never arrive without focus. When the
                 // compose bar owns input, focus is handed to its text field instead --
                 // see the focus block below.
