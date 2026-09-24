@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -27,6 +29,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavType
@@ -165,6 +168,10 @@ fun SpikeScreen(
     // the compose bar while raw key routing stayed live would send every typed character
     // twice -- once as a pane keystroke, once when Send was pressed.
     var inputMode by remember { mutableStateOf("raw") } // raw | compose
+    // Read-only attach is the safe default (product spec: "attach read-only; typing is an
+    // explicit action"). Gates BOTH the compose bar and the raw bridge; the user flips it
+    // off to type into the pane.
+    var readOnly by remember { mutableStateOf(true) }
     // One transcript per source, plus a "has this source ever been opened" latch.
     //
     // Previously a single list was CLEARED and re-collected on every toggle, so each
@@ -332,7 +339,7 @@ fun SpikeScreen(
             scope,
             session,
             target = { paneId ?: connection.sessionName },
-            enabled = { inputMode == "raw" },
+            enabled = { inputMode == "raw" && !readOnly },
         )
     }
 
@@ -365,9 +372,15 @@ fun SpikeScreen(
             Button(onClick = onForget) { Text("Forget") }
         }
         if (viewMode == "terminal") {
-            Row {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Button(onClick = { inputMode = "raw" }) { Text("Raw") }
                 Button(onClick = { inputMode = "compose" }) { Text("Compose") }
+                Spacer(Modifier.weight(1f))
+                Text("Read-only", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                Switch(
+                    checked = readOnly,
+                    onCheckedChange = { readOnly = it },
+                )
             }
             TerminalHost(
                 modifier = Modifier.weight(1f),
@@ -378,17 +391,21 @@ fun SpikeScreen(
                 // hands it to the terminal so key events and long-press reach it.
                 focusable = inputMode == "raw",
             )
-            // Only in compose mode: the same shared bar Chat view uses. Raw mode is
+            // Only in compose mode: the rounded "Message to pane…" bar (v2). Raw mode is
             // keyboard/gesture driven, so a text field there would be redundant.
             if (inputMode == "compose") {
-                ComposeInputBar(onSend = { text ->
-                    scope.launch {
-                        runCatching { session.sendKeys(paneId ?: connection.sessionName, text, literal = true) }
-                            .onFailure { e ->
-                                terminalFeed.emit("\r\nSEND ERROR: ${e.message}\r\n")
-                            }
-                    }
-                })
+                TerminalComposeBar(
+                    onSend = { text ->
+                        scope.launch {
+                            runCatching { session.sendKeys(paneId ?: connection.sessionName, text, literal = true) }
+                                .onFailure { e ->
+                                    terminalFeed.emit("\r\nSEND ERROR: ${e.message}\r\n")
+                                }
+                        }
+                    },
+                    readOnly = readOnly,
+                    onRawMode = { inputMode = "raw" },
+                )
             }
         } else {
             ChatScreen(
