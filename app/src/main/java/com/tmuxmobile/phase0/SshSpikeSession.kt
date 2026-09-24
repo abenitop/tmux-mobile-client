@@ -35,7 +35,13 @@ class SshSpikeSession(
     private lateinit var stdin: OutputStream
     private lateinit var stdout: BufferedReader
 
-    suspend fun connect(sessionName: String) = withContext(Dispatchers.IO) {
+    /**
+     * SSH transport + auth only -- no tmux attach. The Sessions list runs
+     * `list-sessions`/`list-panes` over this before the user picks a session, via
+     * [execStream] (which opens its own channel on the same authenticated client).
+     * Handshake runs here, so trust-on-first-use still fires before any command.
+     */
+    suspend fun connectTransport() = withContext(Dispatchers.IO) {
         installBouncyCastle()
 
         client = SSHClient()
@@ -51,7 +57,9 @@ class SshSpikeSession(
             val keyFile = copyAssetKeyToInternalStorage()
             client.authPublickey(username, client.loadKeys(keyFile.absolutePath))
         }
+    }
 
+    suspend fun attachToSession(sessionName: String) = withContext(Dispatchers.IO) {
         session = client.startSession()
         // tmux -CC requires a pty on stdin: without one it exits immediately
         // ("tcgetattr failed: Inappropriate ioctl for device") and emits no
@@ -165,8 +173,11 @@ class SshSpikeSession(
     }
 
     fun close() {
-        runCatching { command.close() }
-        runCatching { session.close() }
+        // `command`/`session` are lateinit and only assigned by attachToSession(). If the
+        // user leaves from the Sessions list (transport connected, nothing attached), they
+        // were never set -- guard so backing out before attach doesn't crash.
+        if (::command.isInitialized) runCatching { command.close() }
+        if (::session.isInitialized) runCatching { session.close() }
         runCatching { client.disconnect() }
     }
 }

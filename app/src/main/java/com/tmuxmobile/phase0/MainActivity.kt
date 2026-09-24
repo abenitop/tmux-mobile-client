@@ -162,6 +162,13 @@ fun SpikeScreen(
 ) {
     var paneId by remember { mutableStateOf<String?>(null) }
     var connected by remember { mutableStateOf(false) }
+    // Sessions-list state: the landing screen between Hosts and Terminal. The transport
+    // is connected up front, `list-sessions`/`list-panes` fill this list, and tapping a
+    // row attaches to it. attachedSession is the picked name (null until tapped).
+    var sessions by remember { mutableStateOf<List<TmuxSession>>(emptyList()) }
+    var sessionsError by remember { mutableStateOf<String?>(null) }
+    var sessionsLoading by remember { mutableStateOf(true) }
+    var attachedSession by remember { mutableStateOf<String?>(null) }
     var viewMode by remember { mutableStateOf("terminal") } // terminal | chat-claude | chat-hermes
     // Terminal sub-mode: which surface owns input. Toggling this changes both what is
     // shown AND whether RawInputBridge forwards anything (see `enabled` below); showing
@@ -233,9 +240,43 @@ fun SpikeScreen(
         if (detected == null) lastPrompt = null
     }
 
+    // Phase 1: connect the transport (no attach) and list the server's sessions. The
+    // host-key handshake runs here, so trust-on-first-use still fires before any command.
     LaunchedEffect(Unit) {
         runCatching {
-            session.connect(connection.sessionName)
+            session.connectTransport()
+            val names = mutableListOf<TmuxSession>()
+            session.execStream(SessionListParser.listSessionsCommand()).collect { line ->
+                SessionListParser.parseSession(line)?.let { names.add(it) }
+            }
+            val commandsBySession = mutableMapOf<String, MutableList<String>>()
+            session.execStream(SessionListParser.listPanesCommand()).collect { line ->
+                SessionListParser.parsePane(line)?.let { (name, cmd) ->
+                    commandsBySession.getOrPut(name) { mutableListOf() }.add(cmd)
+                }
+            }
+            val processes = commandsBySession.mapValues { (_, cmds) -> SessionListParser.pickProcess(cmds) }
+            names.map { it.copy(process = processes[it.name]) }
+        }.onSuccess {
+            sessions = it
+            sessionsLoading = false
+        }.onFailure { e ->
+            sessionsLoading = false
+            if (hostKeyVerifier.mismatch) {
+                onHostKeyMismatch()
+            } else {
+                sessionsError = e.message ?: "Connection failed"
+            }
+        }
+    }
+
+    // Phase 2: on tap, attach to the picked session and start the control-mode reader.
+    // This is the same attach + reader loop as before (transport is already connected);
+    // it only runs once a session name has been chosen.
+    LaunchedEffect(attachedSession) {
+        val name = attachedSession ?: return@LaunchedEffect
+        runCatching {
+            session.attachToSession(name)
             connected = true
             // The connect()-time capture-pane request replies as a %begin/<data>/%end
             // block interleaved with ordinary %output notifications on this same
@@ -352,6 +393,19 @@ fun SpikeScreen(
 
     DisposableEffect(Unit) {
         onDispose { session.close() }
+    }
+
+    // Until a session is picked, show the Sessions list (the home screen between Hosts
+    // and Terminal). Once attached, the terminal/chat UI takes over.
+    if (attachedSession == null) {
+        SessionsScreen(
+            sessions = sessions,
+            loading = sessionsLoading,
+            error = sessionsError,
+            hostLabel = "${connection.username}@${connection.hostname}:${connection.port}",
+            onAttach = { name -> attachedSession = name },
+        )
+        return
     }
 
     Column(
