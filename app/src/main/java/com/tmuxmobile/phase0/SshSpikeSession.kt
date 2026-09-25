@@ -45,6 +45,15 @@ class SshSpikeSession(
         installBouncyCastle()
 
         client = SSHClient()
+        // Keepalive: sshj's default interval is 0, which disables its Heartbeater
+        // thread entirely (KeepAlive.isEnabled() == interval > 0). The transport then
+        // sits silently idle between listing sessions and attaching; the device's
+        // Tailscale NAT reaps the idle TCP mapping, so the first read/write after the
+        // gap hits EOF ("Broken transport; encountered EOF"). A positive interval makes
+        // the Heartbeater send an SSH_MSG_IGNORE every N seconds — sshj's equivalent of
+        // OpenSSH ServerAliveInterval — keeping the mapping alive. Set BEFORE connect():
+        // connect() starts the keepalive thread, so it must already be enabled.
+        client.connection.keepAlive.setKeepAliveInterval(15)
         // Host key is judged by [hostKeyVerifier]. The default stays PromiscuousVerifier
         // so the key-auth dev-testing call site is unchanged; the real connection flow
         // passes a TofuHostKeyVerifier (see SpikeScreen), which pins the key seen on
