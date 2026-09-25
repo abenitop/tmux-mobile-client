@@ -6,27 +6,23 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.tmuxmobile.phase0.R
-import com.tmuxmobile.phase0.ui.theme.LightColors
+import com.tmuxmobile.phase0.ui.theme.DarkColors
 
 /**
  * v2 type: Bricolage Grotesque for UI, JetBrains Mono for terminal / host / path strings.
  *
- * Bricolage Grotesque is a variable font (opsz/wdth/wght). The only file Google publishes
- * is the variable TTF, so bold is a FontVariation on the same resource rather than a second
- * file; Compose maps FontWeight.Bold to the wght axis (falls back to synthetic bold on
- * platform builds that ignore the axis — acceptable, never wrong).
+ * Both families are bundled as STATIC per-weight files (no variable fonts, no
+ * FontVariation.Settings): variable fonts + FontVariation broke rendering on-device
+ * ("Invalid resource ID 0x00000000", blank screen), so every weight is a real TTF.
  */
 val Bricolage = FontFamily(
     Font(R.font.bricolage_grotesque, FontWeight.Normal),
-    Font(
-        R.font.bricolage_grotesque,
-        FontWeight.Bold,
-        variationSettings = FontVariation.Settings(FontVariation.weight(700)),
-    ),
+    Font(R.font.bricolage_grotesque_semibold, FontWeight.SemiBold),
+    Font(R.font.bricolage_grotesque_bold, FontWeight.Bold),
+    Font(R.font.bricolage_grotesque_extrabold, FontWeight.ExtraBold),
 )
 
 /** Terminal output, host/path strings, ports, process labels. Never UI copy. */
@@ -61,15 +57,14 @@ internal val DiffRemoved = androidx.compose.ui.graphics.Color(0xFFFF7B72)
 internal val PermissionCardColor = androidx.compose.ui.graphics.Color(0xFF2A3942)
 
 /**
- * Light-first warm cream ("paper + ink") chrome. The dark terminal panel is painted by
- * TerminalHost itself, so the light MaterialTheme no longer shows as a white frame around
- * it — the terminal reads as an intentional dark panel inside cream chrome, per the v2
- * direction. Replaces the old always-dark theme.
+ * Dark theme (user-requested): dark warm surfaces, ink/cream text, terminal green accent.
+ * Built from the same v2 tokens in Color.kt (DarkColors). The terminal panel is near-black,
+ * so a dark MaterialTheme lets it read as continuous chrome rather than a white frame.
  */
 @Composable
 fun TmuxMobileTheme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = LightColors,
+        colorScheme = DarkColors,
         typography = AppTypography,
         content = content,
     )

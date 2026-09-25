@@ -25,16 +25,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.tmuxmobile.phase0.ui.theme.Amber
-import com.tmuxmobile.phase0.ui.theme.InkMuted
-import com.tmuxmobile.phase0.ui.theme.InkText
-import com.tmuxmobile.phase0.ui.theme.SurfaceWarm
 import com.tmuxmobile.phase0.ui.theme.StatusGreen
 import com.tmuxmobile.phase0.ui.theme.TerminalGreen
 
 /**
  * Sessions list (home, design s1): the server's tmux sessions, tap to attach. Presentational
  * only — the caller owns connect/list/attach state so the screen can show loading, an error,
- * or the list without re-connecting.
+ * or the list without re-connecting. Colors come from MaterialTheme.colorScheme (dark theme).
  */
 @Composable
 fun SessionsScreen(
@@ -49,17 +46,17 @@ fun SessionsScreen(
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
             Text(
                 hostLabel,
-                color = InkMuted,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontFamily = JetBrainsMono,
                 style = MaterialTheme.typography.bodySmall,
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Sessions", color = InkText, style = MaterialTheme.typography.headlineSmall)
+                Text("Sessions", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.headlineSmall)
                 Spacer(Modifier.weight(1f))
                 if (!loading) {
                     Text(
                         if (sessions.isEmpty()) "0 sessions" else "${sessions.size} sessions",
-                        color = InkMuted,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
@@ -71,10 +68,10 @@ fun SessionsScreen(
                 CircularProgressIndicator(color = TerminalGreen)
             }
             error != null -> Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                Text(error, color = InkMuted, style = MaterialTheme.typography.bodyLarge)
+                Text(error, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
             }
             sessions.isEmpty() -> Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                Text("No tmux sessions on this host.", color = InkMuted, style = MaterialTheme.typography.bodyLarge)
+                Text("No tmux sessions on this host.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
             }
             else -> LazyColumn(
                 modifier = Modifier.weight(1f),
@@ -96,7 +93,7 @@ private fun SessionCard(session: TmuxSession, nowSeconds: Long, onAttach: () -> 
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 6.dp)
-            .background(SurfaceWarm, RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(16.dp))
             .clickable(onClick = onAttach)
             .padding(16.dp),
     ) {
@@ -105,15 +102,15 @@ private fun SessionCard(session: TmuxSession, nowSeconds: Long, onAttach: () -> 
             Box(
                 modifier = Modifier
                     .size(8.dp)
-                    .background(if (session.attached) StatusGreen else InkMuted, CircleShape),
+                    .background(if (session.attached) StatusGreen else MaterialTheme.colorScheme.onSurfaceVariant, CircleShape),
             )
             Spacer(Modifier.width(8.dp))
-            Text(session.name, color = InkText, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(session.name, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Spacer(Modifier.weight(1f))
             if (session.process != null) {
                 Text(
                     session.process,
-                    color = InkText,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontFamily = JetBrainsMono,
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier
@@ -125,7 +122,7 @@ private fun SessionCard(session: TmuxSession, nowSeconds: Long, onAttach: () -> 
         Spacer(Modifier.height(4.dp))
         Text(
             "${session.windows} window${if (session.windows == 1) "" else "s"} · ${SessionListParser.formatActivity(session.activity, nowSeconds)}",
-            color = InkMuted,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontFamily = JetBrainsMono,
             style = MaterialTheme.typography.bodySmall,
         )

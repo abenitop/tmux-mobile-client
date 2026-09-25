@@ -11,9 +11,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.tmuxmobile.phase0.ui.theme.Danger
-import com.tmuxmobile.phase0.ui.theme.InkMuted
-import com.tmuxmobile.phase0.ui.theme.InkText
 
 /**
  * Shown INSTEAD of connecting when TofuHostKeyVerifier reports a mismatch -- never a
@@ -23,11 +20,11 @@ import com.tmuxmobile.phase0.ui.theme.InkText
 @Composable
 fun HostKeyMismatchScreen(connection: Connection, onGoBack: () -> Unit) {
     Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-        Text("Host key changed", color = InkText, style = MaterialTheme.typography.headlineSmall)
+        Text("Host key changed", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(8.dp))
         Text(
             "${connection.hostname}:${connection.port}",
-            color = InkMuted,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontFamily = JetBrainsMono,
             style = MaterialTheme.typography.bodySmall,
         )
@@ -36,7 +33,7 @@ fun HostKeyMismatchScreen(connection: Connection, onGoBack: () -> Unit) {
             "The server presented a different identity than it did before. This could mean " +
                 "the server was reinstalled, or that something is intercepting your connection. " +
                 "Not connecting.",
-            color = InkText,
+            color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.bodyLarge,
         )
         Spacer(Modifier.height(20.dp))

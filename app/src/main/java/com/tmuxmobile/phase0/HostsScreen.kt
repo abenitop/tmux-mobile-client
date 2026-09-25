@@ -24,18 +24,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.tmuxmobile.phase0.ui.theme.InkMuted
-import com.tmuxmobile.phase0.ui.theme.InkText
-import com.tmuxmobile.phase0.ui.theme.SurfaceAlt
-import com.tmuxmobile.phase0.ui.theme.SurfaceWarm
 import com.tmuxmobile.phase0.ui.theme.StatusGreen
-import com.tmuxmobile.phase0.ui.theme.TerminalBg
 import com.tmuxmobile.phase0.ui.theme.TerminalGreen
 
 /**
- * v2 Hosts screen: cream page, dark header, server cards on warm surface with a
- * connection-status dot and mono `user@host` meta, and a dark "+ Add server" pill.
+ * v2 Hosts screen: dark page, server cards on a raised surface with a
+ * connection-status dot and mono `user@host` meta, and a "+ Add server" pill.
  * Same onConnect/onAdd/onEdit/onDelete callbacks as before — restyle only.
+ * Colors come from MaterialTheme.colorScheme (dark theme), not hardcoded tokens.
  */
 @Composable
 fun HostsScreen(
@@ -49,25 +45,29 @@ fun HostsScreen(
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
             Text(
                 "servers",
-                color = InkMuted,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontFamily = JetBrainsMono,
                 style = MaterialTheme.typography.bodySmall,
             )
             Text(
                 "Hosts",
-                color = InkText,
+                color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.headlineSmall,
             )
         }
 
         if (hosts.isEmpty()) {
+            // weight(1f), NOT fillMaxSize(): fillMaxSize() would consume all remaining
+            // vertical space and push the "+ Add server" pill off the bottom of the screen.
+            // weight(1f) lets the empty-state fill the space the list would, and the pill
+            // still lays out below it.
             Column(
-                modifier = Modifier.fillMaxSize().padding(24.dp),
+                modifier = Modifier.weight(1f).padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                Text("No servers yet.", style = MaterialTheme.typography.bodyLarge)
-                Text("Tap “Add server” to save one.", color = InkMuted, style = MaterialTheme.typography.bodyMedium)
+                Text("No servers yet.", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyLarge)
+                Text("Tap “Add server” to save one.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
             }
         } else {
             LazyColumn(
@@ -79,7 +79,7 @@ fun HostsScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 6.dp)
-                            .background(SurfaceWarm, RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(16.dp))
                             .padding(16.dp),
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -92,7 +92,7 @@ fun HostsScreen(
                             Text(
                                 host.name,
                                 style = MaterialTheme.typography.titleMedium,
-                                color = InkText,
+                                color = MaterialTheme.colorScheme.onSurface,
                             )
                         }
                         Spacer(Modifier.height(4.dp))
@@ -100,7 +100,7 @@ fun HostsScreen(
                             "${host.username}@${host.hostname}:${host.port}",
                             fontFamily = JetBrainsMono,
                             style = MaterialTheme.typography.bodySmall,
-                            color = InkMuted,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(Modifier.height(12.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -113,12 +113,12 @@ fun HostsScreen(
             }
         }
 
-        // Dark "+ Add server" pill, full-width, per design s1.
+        // "+ Add server" pill, full-width, per design s1. Inverse surface (light on dark).
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp)
-                .background(TerminalBg, RoundedCornerShape(26.dp))
+                .background(MaterialTheme.colorScheme.inverseSurface, RoundedCornerShape(26.dp))
                 .clickable(onClick = onAdd)
                 .padding(vertical = 16.dp),
             contentAlignment = Alignment.Center,
@@ -126,7 +126,7 @@ fun HostsScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("+", color = TerminalGreen, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.size(8.dp))
-                Text("Add server", color = SurfaceWarm, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyLarge)
+                Text("Add server", color = MaterialTheme.colorScheme.inverseOnSurface, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyLarge)
             }
         }
     }

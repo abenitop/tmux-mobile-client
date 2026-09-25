@@ -27,10 +27,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import com.tmuxmobile.phase0.ui.theme.InkMuted
-import com.tmuxmobile.phase0.ui.theme.InkStrong
-import com.tmuxmobile.phase0.ui.theme.InkText
-import com.tmuxmobile.phase0.ui.theme.SurfaceWarm
 import com.tmuxmobile.phase0.ui.theme.TerminalGreen
 
 /**
@@ -58,18 +54,18 @@ fun TerminalComposeBar(
         Box(
             modifier = Modifier
                 .weight(1f)
-                .background(SurfaceWarm, RoundedCornerShape(24.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(24.dp))
                 .padding(horizontal = 18.dp, vertical = 12.dp),
             contentAlignment = Alignment.CenterStart,
         ) {
             if (draft.isEmpty() && !readOnly) {
-                Text("Message to pane…", color = InkMuted, style = MaterialTheme.typography.bodyMedium)
+                Text("Message to pane…", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
             }
             BasicTextField(
                 value = draft,
                 onValueChange = { draft = it },
                 enabled = !readOnly,
-                textStyle = TextStyle(color = InkText, fontSize = MaterialTheme.typography.bodyMedium.fontSize),
+                textStyle = TextStyle(color = MaterialTheme.colorScheme.onSurface, fontSize = MaterialTheme.typography.bodyMedium.fontSize),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 singleLine = false,
                 modifier = Modifier.fillMaxWidth(),
@@ -83,7 +79,7 @@ fun TerminalComposeBar(
             modifier = Modifier
                 .size(40.dp)
                 .clip(CircleShape)
-                .background(if (readOnly) InkMuted else TerminalGreen)
+                .background(if (readOnly) MaterialTheme.colorScheme.onSurfaceVariant else TerminalGreen)
                 .clickable(enabled = !readOnly) {
                     if (draft.isNotBlank()) {
                         onSend(draft)
@@ -92,7 +88,7 @@ fun TerminalComposeBar(
                 },
             contentAlignment = Alignment.Center,
         ) {
-            Text("➤", color = InkStrong, fontWeight = FontWeight.Bold)
+            Text("➤", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
         }
 
         Spacer(Modifier.width(8.dp))
@@ -101,11 +97,11 @@ fun TerminalComposeBar(
         Box(
             modifier = Modifier
                 .clip(RoundedCornerShape(14.dp))
-                .background(SurfaceWarm)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 .clickable(onClick = onRawMode)
                 .padding(horizontal = 12.dp, vertical = 10.dp),
         ) {
-            Text("RAW", color = InkText, fontFamily = JetBrainsMono, style = MaterialTheme.typography.bodySmall)
+            Text("RAW", color = MaterialTheme.colorScheme.onSurface, fontFamily = JetBrainsMono, style = MaterialTheme.typography.bodySmall)
         }
     }
 }

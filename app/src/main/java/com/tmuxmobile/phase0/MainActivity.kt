@@ -379,7 +379,7 @@ fun SpikeScreen(
         RawInputBridge(
             scope,
             session,
-            target = { paneId ?: connection.sessionName },
+            target = { paneId ?: (attachedSession ?: connection.sessionName) },
             enabled = { inputMode == "raw" && !readOnly },
         )
     }
@@ -451,7 +451,7 @@ fun SpikeScreen(
                 TerminalComposeBar(
                     onSend = { text ->
                         scope.launch {
-                            runCatching { session.sendKeys(paneId ?: connection.sessionName, text, literal = true) }
+                            runCatching { session.sendKeys(paneId ?: (attachedSession ?: connection.sessionName), text, literal = true) }
                                 .onFailure { e ->
                                     terminalFeed.emit("\r\nSEND ERROR: ${e.message}\r\n")
                                 }
@@ -471,7 +471,7 @@ fun SpikeScreen(
                     // onSend had already returned). Verified: `send-keys -t phase0-test -l`
                     // + Enter works on an idle session with no prior %output.
                     scope.launch {
-                        runCatching { session.sendKeys(connection.sessionName, text) }
+                        runCatching { session.sendKeys(attachedSession ?: connection.sessionName, text) }
                             .onFailure { e ->
                                 // Into the active source's list: `chatEvents` is now a derived
                                 // read-only view and cannot be appended to.
@@ -486,7 +486,7 @@ fun SpikeScreen(
                     scope.launch {
                         runCatching {
                             session.sendKeys(
-                                target = connection.sessionName,
+                                target = attachedSession ?: connection.sessionName,
                                 keys = keys,
                                 literal = false,
                                 submit = false,
