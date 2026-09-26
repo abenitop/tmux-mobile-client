@@ -9,12 +9,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.doOnAttach
 import androidx.core.view.doOnLayout
+import android.content.Context
 import android.view.GestureDetector
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.inputmethod.InputMethodManager
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalView
@@ -132,13 +135,27 @@ fun TerminalHost(
     // the release path, compose mode opens with focus still on the terminal -- which
     // never shows the soft keyboard, so the user taps the text field, the IME covers the
     // terminal, and the terminal's own text-selection path never gets a long-press.
+    //
+    // The focusable path must ALSO raise the IME: TerminalView.onTouchEvent never calls
+    // showSoftInput (its bytecode holds no InputMethodManager reference) and nothing else
+    // did either, so focusing the terminal left the keyboard down and typing impossible.
+    // The view is a valid text editor (onCheckIsTextEditor() -> true,
+    // isTerminalViewSelected() -> true), so one IMM request once attached is enough.
+    val context = LocalContext.current
     DisposableEffect(focusable, view) {
         val v = view ?: return@DisposableEffect onDispose {}
         if (focusable) {
-            v.requestFocus()
+            // post(): the view must be attached and focused before the request lands.
+            v.post {
+                v.requestFocus()
+                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                imm.showSoftInput(v, InputMethodManager.SHOW_IMPLICIT)
+            }
             onDispose {}
         } else {
             v.clearFocus()
+            val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.hideSoftInputFromWindow(v.windowToken, 0)
             onDispose {}
         }
     }

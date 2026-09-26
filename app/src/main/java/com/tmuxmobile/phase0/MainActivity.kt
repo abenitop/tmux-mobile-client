@@ -3,6 +3,7 @@ package com.tmuxmobile.phase0
 import android.content.Context
 import android.os.Bundle
 import android.os.Environment
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -242,7 +243,12 @@ fun SpikeScreen(
             if (hostKeyVerifier.mismatch) {
                 onHostKeyMismatch()
             } else {
-                sessionsError = e.message ?: "Connection failed"
+                // sshj logs through slf4j and the APK ships no binding, so its own
+                // diagnostics go nowhere; keeping only e.message also hides the cause.
+                // Log the full stack and show the class + cause chain, otherwise a
+                // failure is undiagnosable from the device.
+                Log.e(TAG, "connectTransport / session listing failed", e)
+                sessionsError = describeThrowable(e)
             }
         }
     }
@@ -278,10 +284,11 @@ fun SpikeScreen(
             }
         }.onFailure { e ->
             appState.connected = false
+            Log.e(TAG, "attach to '$name' failed", e)
             if (hostKeyVerifier.mismatch) {
                 onHostKeyMismatch()
             } else {
-                terminalFeed.emit("\r\nERROR: ${e.message}\r\n")
+                terminalFeed.emit("\r\nERROR: ${describeThrowable(e)}\r\n")
             }
         }
     }
@@ -396,6 +403,13 @@ fun SpikeScreen(
                         literal = false,
                         submit = false,
                     )
+                }.onFailure { e ->
+                    // The toolbar path used to swallow failures entirely (bare runCatching),
+                    // so a rejected command looked identical to a working but invisible one
+                    // -- "no result after press keys". Surface it the same way the compose
+                    // path does so a failure is never silent again.
+                    Log.w("TmuxMobile", "sendSpecialKey '$key' failed", e)
+                    terminalFeed.tryEmit("\r\nKEY ERROR ($key): ${e.message}\r\n")
                 }
             }
         }
@@ -485,4 +499,25 @@ fun SpikeScreen(
             )
         }
     }
+}
+
+/**
+ * Renders a throwable as "ClassName: message" plus its cause chain. sshj wraps transport
+ * failures, so the root cause ("Broken transport; encountered EOF") is usually one or two
+ * levels down; showing only [Throwable.getMessage] hides which layer actually failed.
+ */
+private const val TAG = "TmuxMobile"
+
+private fun describeThrowable(t: Throwable): String {
+    val sb = StringBuilder()
+    var current: Throwable? = t
+    var depth = 0
+    while (current != null && depth < 4) {
+        if (depth > 0) sb.append("\n  caused by: ")
+        sb.append(current.javaClass.simpleName)
+        current.message?.takeIf { it.isNotBlank() }?.let { sb.append(": ").append(it) }
+        current = current.cause
+        depth++
+    }
+    return sb.toString()
 }

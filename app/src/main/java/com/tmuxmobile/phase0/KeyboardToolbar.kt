@@ -11,11 +11,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.tmuxmobile.phase0.ui.theme.Amber
 
 /**
  * Row of extra special keys above the system keyboard (Ctrl / Esc / Tab / arrows). This is
@@ -36,8 +41,15 @@ fun KeyboardToolbar(
 ) {
     if (mode == "never") return
 
+    // Ctrl is a MODIFIER: on its own it sends nothing. Bare "C" is not a control key at
+    // all -- tmux echoes it as a literal "C" character (verified over a live control-mode
+    // channel: `send-keys -t <s> C` came back as `%output %21 C`, while `C-c` produced a
+    // real interrupt and killed the foreground process). So Ctrl stays sticky: pressing it
+    // arms the next key, which is then sent as C-<key> ("C-c", "C-d", ...). Ctrl twice
+    // disarms, and a modifier is never sent as a standalone key.
+    var ctrlArmed by remember { mutableStateOf(false) }
     val keys = listOf(
-        "Ctrl" to "C",
+        if (ctrlArmed) "Ctrl*" to "__CTRL__" else "Ctrl" to "__CTRL__",
         "Esc" to "Escape",
         "Tab" to "Tab",
         "↑" to "Up",
@@ -56,8 +68,22 @@ fun KeyboardToolbar(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(8.dp))
-                    .clickable { onKey(keyName) }
+                    .background(
+                        // Armed Ctrl is tinted so the modifier state is visible.
+                        if (ctrlArmed && keyName == "__CTRL__") Amber
+                        else MaterialTheme.colorScheme.surfaceContainerHigh,
+                        RoundedCornerShape(8.dp),
+                    )
+                    .clickable {
+                        when {
+                            keyName == "__CTRL__" -> ctrlArmed = !ctrlArmed
+                            ctrlArmed -> {
+                                ctrlArmed = false
+                                onKey(TmuxKeyMapper.controlKeyName(keyName))
+                            }
+                            else -> onKey(keyName)
+                        }
+                    }
                     .padding(vertical = 10.dp),
                 contentAlignment = Alignment.Center,
             ) {

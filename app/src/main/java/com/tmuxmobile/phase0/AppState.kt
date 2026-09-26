@@ -10,21 +10,39 @@ import androidx.compose.runtime.setValue
  * Plain [android.content.SharedPreferences] is enough — these are not credentials, so no
  * Keystore. A separate file from [EncryptedPasswordStore] on purpose: UI prefs must not
  * clear (or be cleared by) the secrets store.
+ *
+ * Values are held in Compose state and written through to disk on set. They MUST be state
+ * and not a bare `prefs.get*()` read: the overflow menu writes these while the screen that
+ * consumes them is already composed, and a plain getter gives no recomposition trigger —
+ * selecting "Keyboard toolbar: Always" appeared to do nothing until the screen was left
+ * and re-entered. This also fixes the submenu checkmark, which reads the same getter.
  */
 class AppPrefs(context: Context) {
     private val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
 
+    private val fontSizeState = mutableStateOf(prefs.getInt("font_size", DEFAULT_FONT_SIZE))
     var fontSize: Int
-        get() = prefs.getInt("font_size", DEFAULT_FONT_SIZE)
-        set(v) = prefs.edit().putInt("font_size", v).apply()
+        get() = fontSizeState.value
+        set(v) {
+            fontSizeState.value = v
+            prefs.edit().putInt("font_size", v).apply()
+        }
 
+    private val denseBarState = mutableStateOf(prefs.getString("dense_bar", "auto") ?: "auto")
     var denseBar: String
-        get() = prefs.getString("dense_bar", "auto") ?: "auto"
-        set(v) = prefs.edit().putString("dense_bar", v).apply()
+        get() = denseBarState.value
+        set(v) {
+            denseBarState.value = v
+            prefs.edit().putString("dense_bar", v).apply()
+        }
 
+    private val toolbarState = mutableStateOf(prefs.getString("keyboard_toolbar", "auto") ?: "auto")
     var keyboardToolbar: String
-        get() = prefs.getString("keyboard_toolbar", "auto") ?: "auto"
-        set(v) = prefs.edit().putString("keyboard_toolbar", v).apply()
+        get() = toolbarState.value
+        set(v) {
+            toolbarState.value = v
+            prefs.edit().putString("keyboard_toolbar", v).apply()
+        }
 
     companion object {
         /** Selectable sizes are 8..24 step 2 (the operator's spec). */

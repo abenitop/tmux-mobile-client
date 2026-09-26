@@ -27,6 +27,23 @@ class TmuxKeyMapperTest {
         assertEquals("Escape", TmuxKeyMapper.specialKeyName(KeyEvent.KEYCODE_ESCAPE))
     }
 
+    /**
+     * The toolbar's Ctrl is sticky: it arms the next key, which is sent as a control key.
+     * A bare "C" must never be emitted -- tmux treats it as a literal "C" character, so
+     * the old always-send-"C" behaviour typed a letter instead of acting as a modifier.
+     */
+    @Test
+    fun `controlKeyName combines a base key with Ctrl and never yields bare C`() {
+        assertEquals("C-c", TmuxKeyMapper.controlKeyName("c"))
+        assertEquals("C-d", TmuxKeyMapper.controlKeyName("d"))
+        assertEquals("C-Up", TmuxKeyMapper.controlKeyName("Up"))
+        // Ctrl-[ and Ctrl-I are the canonical encodings of ESC and Tab.
+        assertEquals("C-[", TmuxKeyMapper.controlKeyName("Escape"))
+        assertEquals("C-I", TmuxKeyMapper.controlKeyName("Tab"))
+        // A modifier on its own is not a key: the toolbar must never send plain "C".
+        assertEquals("C-C", TmuxKeyMapper.controlKeyName("C"))
+    }
+
     @Test
     fun `returns null for printable keys -- those arrive via onCodePoint, not here`() {
         assertNull(TmuxKeyMapper.specialKeyName(KeyEvent.KEYCODE_A))

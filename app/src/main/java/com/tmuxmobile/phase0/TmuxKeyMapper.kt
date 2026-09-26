@@ -34,4 +34,20 @@ object TmuxKeyMapper {
         KeyEvent.KEYCODE_ESCAPE -> "Escape"
         else -> null
     }
+
+    /**
+     * Combines a base key name with the sticky Ctrl modifier into a tmux control key name.
+     *
+     * Ctrl on its own is only a modifier and sends nothing. tmux's bare "C" is NOT a
+     * control key -- it types a literal "C" (verified over a live control-mode channel:
+     * `send-keys -t <s> C` echoed `%output %21 C`, whereas `C-c` delivered a real
+     * interrupt and killed the foreground process). So a Ctrl press arms the next key,
+     * which lands here as "C-<key>".
+     */
+    fun controlKeyName(baseKeyName: String): String = when (baseKeyName) {
+        // Ctrl-[ IS the ESC byte, so Ctrl+Esc collapses to the escape sequence.
+        "Escape" -> "C-["
+        "Tab" -> "C-I"
+        else -> "C-$baseKeyName"
+    }
 }
