@@ -181,6 +181,33 @@ class SshSpikeSession(
         }
     }
 
+    /**
+     * Downloads a remote file to [dest] over SFTP. The transport must already be connected
+     * and authenticated (i.e. [connectTransport] has run) — it does not require an attached
+     * tmux session, so a download can happen from the Sessions list too.
+     *
+     * sshj's SFTPClient.get() copies remote -> local wholesale; a missing remote path or a
+     * path that is a directory throws IOException, which the caller surfaces as the spec's
+     * "path error".
+     */
+    suspend fun downloadFile(remotePath: String, dest: File) = withContext(Dispatchers.IO) {
+        val sftp = client.newSFTPClient()
+        try {
+            sftp.get(remotePath, dest.absolutePath)
+        } finally {
+            runCatching { sftp.close() }
+        }
+    }
+
+    /**
+     * Runs a remote `tmux ...` command on a fresh channel and drains its output. Used for
+     * split-window (which must act on the tmux server, not the control-mode channel — the
+     * control-mode stdin only carries send-keys/capture-pane, not arbitrary tmux commands).
+     */
+    suspend fun runRemote(command: String) = withContext(Dispatchers.IO) {
+        execStream(command).collect { }
+    }
+
     fun close() {
         // `command`/`session` are lateinit and only assigned by attachToSession(). If the
         // user leaves from the Sessions list (transport connected, nothing attached), they

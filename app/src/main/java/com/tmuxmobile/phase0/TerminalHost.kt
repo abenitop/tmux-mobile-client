@@ -36,6 +36,7 @@ fun TerminalHost(
     modifier: Modifier = Modifier,
     feed: Flow<String>,
     viewClient: TerminalViewClient,
+    fontSize: Int = AppPrefs.DEFAULT_FONT_SIZE,
     onFling: (SwipeDirection) -> Unit = {},
     focusable: Boolean = true,
 ) {
@@ -53,7 +54,7 @@ fun TerminalHost(
                 // before attachSession(), which lazily creates the renderer and reads
                 // the client during updateSize().
                 setTerminalViewClient(viewClient)
-                setTextSize(30)
+                setTextSize(fontSize)
                 // TerminalView paints no background once an emulator is attached, so
                 // default-color text is nearly invisible against the app's window --
                 // must set this explicitly (Task 1 finding). #0F0E0C is the v2 terminal
@@ -121,7 +122,10 @@ fun TerminalHost(
         // Re-applied on every client change. Without this the factory runs once and a
         // later viewClient (e.g. RawInputBridge remembered against a newly-learned
         // paneId) would never reach the TerminalView.
-        update = { terminalView -> terminalView.setTerminalViewClient(viewClient) },
+        update = { terminalView ->
+            terminalView.setTerminalViewClient(viewClient)
+            terminalView.setTextSize(fontSize)
+        },
     )
 
     // Hand focus to (or take it from) the terminal as input ownership changes. Without

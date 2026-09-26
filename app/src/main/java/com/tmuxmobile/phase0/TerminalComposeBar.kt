@@ -28,12 +28,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.tmuxmobile.phase0.ui.theme.TerminalGreen
-
 /**
  * Terminal compose bar (v2, screen s2): the phone keyboard types into a rounded
- * "Message to pane…" bubble and Send fires send-keys into the live tmux pane. A raw-mode
- * chip swaps to keyboard/gesture input. Behaviour mirrors the shared ComposeInputBar:
- * blank input is ignored, the draft is cleared only after it is accepted.
+ * "Message to pane…" bubble and Send fires send-keys into the live tmux pane. Raw mode
+ * is reached via the top-bar overflow menu now, so this bar is field + send only.
+ * Blank input is ignored, the draft is cleared only after it is accepted.
  *
  * [readOnly] disables the field and the send button (input is off; safe-by-default attach).
  */
@@ -41,7 +40,6 @@ import com.tmuxmobile.phase0.ui.theme.TerminalGreen
 fun TerminalComposeBar(
     onSend: (String) -> Unit,
     readOnly: Boolean,
-    onRawMode: () -> Unit,
 ) {
     var draft by remember { mutableStateOf("") }
 
@@ -89,19 +87,6 @@ fun TerminalComposeBar(
             contentAlignment = Alignment.Center,
         ) {
             Text("➤", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
-        }
-
-        Spacer(Modifier.width(8.dp))
-
-        // Raw-mode chip (swaps the compose bar for keyboard/gesture input).
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(14.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                .clickable(onClick = onRawMode)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-        ) {
-            Text("RAW", color = MaterialTheme.colorScheme.onSurface, fontFamily = JetBrainsMono, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
