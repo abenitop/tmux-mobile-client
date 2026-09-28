@@ -10,9 +10,11 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.schmizz.sshj.SSHClient
+import net.schmizz.sshj.DefaultConfig
 import net.schmizz.sshj.connection.channel.direct.Session
 import net.schmizz.sshj.transport.verification.HostKeyVerifier
 import net.schmizz.sshj.transport.verification.PromiscuousVerifier
+import com.hierynomus.sshj.transport.cipher.BlockCiphers
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.io.BufferedReader
 import java.io.File
@@ -45,6 +47,20 @@ class SshSpikeSession(
         installBouncyCastle()
 
         client = SSHClient()
+        // Restrict the cipher to AES-CTR. OpenSSH advertises chacha20-poly1305 first,
+        // and sshj's pure-Java ChachaPolyCipher produces corrupt packets on Android —
+        // the server accepts the password, then the first bulk packet decrypts to
+        // garbage and sshd logs "Bad packet length ... Connection corrupted". AES-CTR
+        // is the JCE-backed cipher sshj implements correctly, and the server offers it
+        // (aes128/192/256-ctr). Pin it before connect(): negotiation reads these
+        // factories to build the SSH_MSG_KEXINIT cipher list.
+        (client.getTransport().config as DefaultConfig).setCipherFactories(
+            listOf(
+                BlockCiphers.AES256CTR(),
+                BlockCiphers.AES192CTR(),
+                BlockCiphers.AES128CTR(),
+            )
+        )
         // Keepalive: sshj's default interval is 0, which disables its Heartbeater
         // thread entirely (KeepAlive.isEnabled() == interval > 0). The transport then
         // sits silently idle between listing sessions and attaching; the device's

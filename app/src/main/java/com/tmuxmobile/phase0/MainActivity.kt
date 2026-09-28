@@ -335,6 +335,16 @@ fun SpikeScreen(
             session,
             target = { paneId ?: (appState.attachedSessionName ?: connection.sessionName) },
             enabled = { appState.inputMode == "raw" && !appState.readOnly },
+            onBlocked = {
+                // Distinguish the two reasons input is off, so the fix is obvious: the
+                // read-only gate (top-bar lock icon) vs. compose mode owning the text field.
+                val why = if (appState.readOnly) {
+                    "read-only -- tap the lock icon in the top bar to type"
+                } else {
+                    "compose mode owns the keyboard -- switch Input mode to Raw"
+                }
+                terminalFeed.tryEmit("\r\nINPUT DISABLED ($why)\r\n")
+            },
         )
     }
 

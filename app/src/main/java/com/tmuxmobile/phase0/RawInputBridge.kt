@@ -31,22 +31,42 @@ class RawInputBridge(
     private val session: SshSpikeSession,
     private val target: () -> String?,
     private val enabled: () -> Boolean = { true },
+    /**
+     * Invoked (at most once per stall) when input arrives while [enabled] is false, so the
+     * user is told WHY their keystrokes vanish instead of seeing nothing happen. Reported
+     * through the terminal feed by the caller.
+     */
+    private val onBlocked: () -> Unit = {},
 ) : TerminalViewClient {
 
     private val handler = Handler(Looper.getMainLooper())
     private val pendingText = StringBuilder()
     private var flushScheduled = false
+    private var blockedNoticeShown = false
 
     private val flushRunnable = Runnable { flushPending() }
 
     fun onFling(direction: SwipeDirection) = send(TmuxKeyMapper.swipeKeyName(direction))
 
+    /**
+     * Single choke point for the "input disabled" state. Every input callback funnels
+     * through here so a blocked keystroke is announced once rather than silently dropped
+     * (which is what made this look like a broken keyboard).
+     */
+    private fun blocked(): Boolean {
+        if (blockedNoticeShown) return true
+        blockedNoticeShown = true
+        onBlocked()
+        return true
+    }
+
     override fun onKeyDown(keyCode: Int, e: KeyEvent, session: TerminalSession): Boolean {
-        // While composing, swallow key events rather than returning false. TerminalView
-        // falls through to `mTermSession.write(...)` / inputCodePoint() when the client
-        // returns false, which would push the keystrokes into the DUMMY local session
-        // and echo them into the shared emulator on top of the real pane content.
-        if (!enabled()) return true
+        // While composing OR read-only, swallow key events rather than returning false.
+        // TerminalView falls through to `mTermSession.write(...)` / inputCodePoint() when
+        // the client returns false, which would push the keystrokes into the DUMMY local
+        // session and echo them into the shared emulator on top of the real pane content.
+        if (!enabled()) return blocked()
+        blockedNoticeShown = false
         val name = TmuxKeyMapper.specialKeyName(keyCode) ?: return false
         // Flush any buffered text FIRST: a special key must not jump ahead of the
         // characters typed before it (e.g. "ls" + Enter).
@@ -60,14 +80,15 @@ class RawInputBridge(
     override fun onKeyUp(keyCode: Int, e: KeyEvent): Boolean = true
 
     override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession): Boolean {
-        // Same reasoning as onKeyDown: consume, but do not forward while composing.
-        if (!enabled()) return true
+        // Same reasoning as onKeyDown: consume, but do not forward while blocked.
+        if (!enabled()) return blocked()
+        blockedNoticeShown = false
         queueLiteral(String(Character.toChars(codePoint)))
         return true
     }
 
     override fun onLongPress(event: MotionEvent): Boolean {
-        if (!enabled()) return true
+        if (!enabled()) return blocked()
         flushPending()
         send("Escape")
         return true
@@ -108,7 +129,29 @@ class RawInputBridge(
     override fun onScale(scale: Float): Float = 1.0f
     override fun onSingleTapUp(e: MotionEvent) {}
     override fun shouldBackButtonBeMappedToEscape(): Boolean = false
-    override fun shouldEnforceCharBasedInput(): Boolean = false
+
+    /**
+     * Must be TRUE, despite TYPE_NULL being nominally the "correct" input type.
+     *
+     * TerminalView.onCreateInputConnection picks EditorInfo.inputType from this:
+     * true -> TYPE_TEXT_VARIATION_VISIBLE_PASSWORD | TYPE_TEXT_FLAG_NO_SUGGESTIONS,
+     * false -> TYPE_NULL. Returning false therefore declares "not a text editor", and
+     * the library's own comment on that branch is the bug report we hit:
+     *
+     *   "Some keyboards seems do not reset the internal state on TYPE_NULL.
+     *    Affects mostly Samsung stock keyboards." (termux-app#686)
+     *
+     * Observed on the S23: the soft keyboard renders and keys visibly press, but no
+     * character ever reaches onCodePoint, so nothing is typed. With a char-based input
+     * type the IME routes through commitText -> sendTextToTerminal -> inputCodePoint ->
+     * onCodePoint (which forwards to the pane) instead of going stale.
+     *
+     * Verified at the source level in TerminalView.java: inputCodePoint returns early
+     * when onCodePoint is handled, and otherwise falls through to
+     * mTermSession.writeCodePoint() -- the DUMMY local "cat" session. So any code point
+     * this bridge fails to consume lands in the local session, never in the SSH pane.
+     */
+    override fun shouldEnforceCharBasedInput(): Boolean = true
     override fun shouldUseCtrlSpaceWorkaround(): Boolean = false
     override fun isTerminalViewSelected(): Boolean = true
     override fun copyModeChanged(copyMode: Boolean) {}

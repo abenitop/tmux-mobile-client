@@ -1,5 +1,6 @@
 package com.tmuxmobile.phase0
 
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,6 +20,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 
@@ -109,6 +112,21 @@ private fun MonoField(
         onValueChange = onValueChange,
         label = { Text(label) },
         visualTransformation = if (isPassword) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+        // PasswordVisualTransformation only changes what is DRAWN -- it does not tell the
+        // IME anything, so without these the field is still treated as ordinary prose and
+        // the keyboard's auto-correct/auto-capitalize stay enabled. On a Samsung IME that
+        // silently rewrites credentials ("password" -> capitalised, or autocorrected), and
+        // the mangled value is then what gets persisted and sent, giving "Failed password"
+        // on auth. Password + no autocorrect + no capitalization is the correct contract.
+        keyboardOptions = if (isPassword) {
+            KeyboardOptions(
+                keyboardType = KeyboardType.Password,
+                autoCorrectEnabled = false,
+                capitalization = KeyboardCapitalization.None,
+            )
+        } else {
+            KeyboardOptions(keyboardType = KeyboardType.Ascii, autoCorrectEnabled = false)
+        },
         textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = JetBrainsMono, color = MaterialTheme.colorScheme.onSurface),
         shape = RoundedCornerShape(14.dp),
         modifier = Modifier.fillMaxWidth(),
